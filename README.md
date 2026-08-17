@@ -2,6 +2,8 @@
 
 **An interactive primer on digital sound synthesis — from a single sample to a polyphonic synthesizer.**
 
+### ▶ [**Read it live**](https://theillusionistmirage.github.io/signal-path/)
+
 One self-contained HTML file. No build step, no dependencies, no JavaScript
 libraries. Nine chapters, twelve figures, ten interactive modules.
 
