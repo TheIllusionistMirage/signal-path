@@ -4,6 +4,9 @@
 
 ### ▶ [**Read it live**](https://theillusionistmirage.github.io/signal-path/)
 
+[![Code: Apache-2.0](https://img.shields.io/badge/code-Apache--2.0-5FA0AE?style=flat-square)](LICENSE)
+[![Docs: CC BY 4.0](https://img.shields.io/badge/docs-CC%20BY%204.0-5FA0AE?style=flat-square)](LICENSE-DOCS)
+
 One self-contained HTML file. No build step, no dependencies, no JavaScript
 libraries. Nine chapters, twelve figures, ten interactive modules.
 

@@ -363,6 +363,30 @@ figcaption b{color:var(--ink-2);font-weight:500;letter-spacing:.12em;text-transf
 }
 .checkpoint p{margin:0;font-size:1rem}
 
+/* Source-repository button — collapsed to a glyph, expands on hover/focus */
+.repo{
+  position:fixed;top:16px;right:16px;z-index:75;
+  display:flex;align-items:center;gap:0;
+  height:38px;padding:0 10px;text-decoration:none;
+  background:var(--panel);border:1px solid #121817;border-radius:3px;
+  box-shadow:0 10px 26px -16px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.05);
+  transition:background .18s ease,border-color .18s ease;
+}
+.repo:hover,.repo:focus-visible{background:var(--panel-3);border-color:var(--audio)}
+.repo svg{flex:0 0 auto;display:block;stroke:var(--silk-2);fill:none;
+  stroke-width:1.6;stroke-linecap:round;transition:stroke .18s ease}
+.repo:hover svg,.repo:focus-visible svg{stroke:var(--audio)}
+.repo .lab{
+  font-family:var(--f-display);font-weight:600;text-transform:uppercase;
+  letter-spacing:.15em;font-size:11.5px;color:var(--silk-2);white-space:nowrap;
+  max-width:0;opacity:0;overflow:hidden;
+  transition:max-width .22s ease,opacity .18s ease,margin-left .22s ease,color .18s ease;
+}
+.repo:hover .lab,.repo:focus-visible .lab{max-width:150px;opacity:1;margin-left:9px;color:var(--silk)}
+.repo:focus-visible{outline:2px solid var(--audio);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.repo .lab{transition:none}}
+@media (max-width:900px){.repo{top:12px;right:12px;height:36px}}
+
 /* Byline */
 .byline{
   display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
@@ -464,6 +488,18 @@ footer p{font-size:.93rem;color:var(--ink-2)}
 </head>
 <body>
 <button class="railbtn" aria-label="Open contents">☰ Contents</button>
+
+<a class="repo" href="https://github.com/TheIllusionistMirage/signal-path" target="_blank" rel="noopener noreferrer"
+   title="Read the source on GitHub" aria-label="Read the source on GitHub, opens in a new tab">
+  <svg viewBox="0 0 18 18" width="17" height="17" aria-hidden="true" focusable="false">
+    <circle cx="5.5" cy="3.6" r="2"></circle>
+    <circle cx="5.5" cy="14.4" r="2"></circle>
+    <circle cx="12.5" cy="3.6" r="2"></circle>
+    <path d="M5.5 5.6v6.8"></path>
+    <path d="M12.5 5.6v1.6a3.2 3.2 0 0 1-3.2 3.2H7.5"></path>
+  </svg>
+  <span class="lab">Source</span>
+</a>
 
 <nav class="rail" aria-label="Contents">
   <div class="rail-head">
