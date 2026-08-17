@@ -7,6 +7,8 @@
 [![Code: Apache-2.0](https://img.shields.io/badge/code-Apache--2.0-5FA0AE?style=flat-square)](LICENSE)
 [![Docs: CC BY 4.0](https://img.shields.io/badge/docs-CC%20BY%204.0-5FA0AE?style=flat-square)](LICENSE-DOCS)
 
+Turn your sound on — nothing plays until you press **Play** on a module.
+
 One self-contained HTML file. No build step, no dependencies, no JavaScript
 libraries. Nine chapters, twelve figures, ten interactive modules.
 
@@ -17,8 +19,10 @@ the main thread to draw the figures, so the filter response curves are measured
 from real impulse responses rather than plotted from formulae. Nothing on the
 page is an illustration of a measurement; everything is the measurement.
 
-The Rust listings throughout show how each piece translates to a native
-implementation with `cpal` and `midir`.
+Every code listing comes in **Rust and Python** — one switch at the top of any
+listing changes them all, so you can read the whole book in whichever you
+prefer. Python (`sounddevice`, `numpy`, `mido`) is the gentler way in; Rust
+(`cpal`, `midir`) is what you would ship.
 
 ---
 
@@ -35,7 +39,12 @@ implementation with `cpal` and `midir`.
 | 06 | Modulation — LFOs, phase modulation, sidebands | Two-operator PM |
 | 07 | Voices — allocation, stealing, smoothing, denormals | The synthesizer |
 | 08 | Space & Shipping — delay lines, combs, reverb, plugins | Effects rack |
+| 09 | The Instrument — the capstone, sequencing in the callback | **Playable 16-step synth** |
 | — | References — attribution and further reading | |
+
+Chapter 09 is the payoff: a 16-step sequencer running inside the audio thread,
+driving the full voice architecture, with a live signal-path diagram showing
+which stage came from which chapter.
 
 Play with `Z`–`M` and `Q`–`P` once a synth panel has focus, or click the keys.
 Drag knobs vertically; hold `Shift` for fine control, double-click to reset.
@@ -99,7 +108,10 @@ allocator retires stranded voices correctly.
 1. Push this directory to a repository with `index.html` at the root.
 2. **Settings → Pages → Build and deployment → Deploy from a branch**, select
    your branch and `/ (root)`.
-3. Done. There is no build step — GitHub serves the file as-is.
+3. Wait for the first deploy (usually under a minute). There is no build step —
+   GitHub serves the file as-is.
+4. Copy the URL GitHub shows you into the **Read it live** link at the top of
+   this file.
 
 `.nojekyll` is included to skip Jekyll processing. It isn't strictly required
 (no filenames begin with `_`), but it makes deploys faster and avoids surprises.

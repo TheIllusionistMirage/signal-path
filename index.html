@@ -371,6 +371,39 @@ td code{font-size:.86em}
 }
 .key.blk .kl{color:#6E7A76}
 
+/* Step sequencer */
+.seq-wrap{overflow-x:auto;margin:0 0 18px;padding-bottom:5px}
+.seq-grid{
+  display:grid;grid-template-columns:32px repeat(16,minmax(19px,1fr));
+  gap:2px;min-width:490px;
+}
+.seq-lab{
+  font-family:var(--f-mono);font-size:8px;color:#5C6764;
+  display:flex;align-items:center;justify-content:flex-end;padding-right:4px;
+}
+.seq-num{
+  font-family:var(--f-mono);font-size:8.5px;color:#5C6764;text-align:center;
+  padding:2px 0;border-radius:1px;
+}
+.seq-num.now{color:#1A1206;background:var(--audio)}
+.seq-cell{
+  height:14px;padding:0;cursor:pointer;border-radius:1px;
+  background:#1E2524;border:1px solid #141A19;
+}
+.seq-cell.blk{background:#171D1C}
+.seq-cell:hover{background:#333D3B}
+.seq-cell.now:not(.on){background:#2B3432}
+.seq-cell.on{background:var(--audio);border-color:#B8842A}
+.seq-cell.on.acc{background:var(--gate);border-color:#8E362E}
+.seq-cell:focus-visible{outline:2px solid var(--silk);outline-offset:1px}
+.seq-acc{
+  height:11px;padding:0;cursor:pointer;border-radius:1px;
+  background:#1E2524;border:1px solid #141A19;
+}
+.seq-acc:hover{background:#333D3B}
+.seq-acc.on{background:var(--gate);border-color:#8E362E}
+.seq-acc:focus-visible{outline:2px solid var(--silk);outline-offset:1px}
+
 /* Bar meter for voices */
 .voices{display:flex;gap:5px;margin-top:14px}
 .voices div{
@@ -615,6 +648,7 @@ footer p{font-size:.93rem;color:var(--ink-2)}
     <a href="#ch6"><span class="n">06</span><span class="t">Modulation</span></a>
     <a href="#ch7"><span class="n">07</span><span class="t">Voices</span></a>
     <a href="#ch8"><span class="n">08</span><span class="t">Space &amp; Shipping</span></a>
+    <a href="#ch9"><span class="n">09</span><span class="t">The Instrument</span></a>
     <a href="#refs"><span class="n">·</span><span class="t">References</span></a>
   </div>
   <div class="rail-foot">AMBER = AUDIO<br>TEAL = CONTROL<br>RED = GATE / FAULT</div>
@@ -2970,6 +3004,406 @@ port = mido.<span class="f">open_input</span>(mido.<span class="f">get_input_nam
   </div>
 </section>
 
+<!-- ================= CHAPTER 9 ================= -->
+<section class="chapter" id="ch9">
+  <div class="wrap">
+    <div class="chapter-head">
+      <div class="chapter-meta">
+        <span class="chapter-num">Ch 09</span>
+        <span class="chapter-tag">the capstone · sequencing in the callback · reading a patch</span>
+      </div>
+      <h2>The Instrument</h2>
+      <p class="chapter-lede">Nine chapters of parts, assembled. Nothing new is introduced here —
+        this is the same code you have been reading, wired together and given something to play.</p>
+    </div>
+
+    <h3>What you have actually built</h3>
+    <p>
+      Every stage below exists because of a specific problem in a specific chapter. Read the chain
+      left to right and the book reads back at you:
+    </p>
+    <table>
+      <tr><th>Stage</th><th>From</th><th>The problem it solves</th></tr>
+      <tr><td>Phase accumulator</td><td>Ch 01</td><td>Producing a steady pitch without drift or clicks</td></tr>
+      <tr><td>PolyBLEP oscillators</td><td>Ch 03</td><td>A bright waveform that does not alias on high notes</td></tr>
+      <tr><td>Sub and noise</td><td>Ch 02–03</td><td>Weight underneath, and air on top</td></tr>
+      <tr><td>TPT state-variable filter</td><td>Ch 05</td><td>Removing harmonics, sweepable without thumping</td></tr>
+      <tr><td>Filter envelope</td><td>Ch 04–05</td><td>The downward sweep that makes a note feel struck</td></tr>
+      <tr><td>Amplitude envelope</td><td>Ch 04</td><td>Turning a continuous tone into a note</td></tr>
+      <tr><td>Key tracking</td><td>Ch 05</td><td>High notes staying as bright as low ones</td></tr>
+      <tr><td>LFO and mod routing</td><td>Ch 06</td><td>Movement, so nothing sits perfectly still</td></tr>
+      <tr><td>Voice allocation</td><td>Ch 07</td><td>Playing more than one note without clicks</td></tr>
+      <tr><td>Chorus, delay, reverb</td><td>Ch 08</td><td>Placing the sound somewhere rather than nowhere</td></tr>
+      <tr><td>Step sequencer</td><td>Ch 09</td><td>Something to play, with timing you can trust</td></tr>
+    </table>
+
+    <h3>Why the sequencer lives in the audio callback</h3>
+    <p>
+      It is tempting to drive a sequencer from a timer on the UI thread: wake up every so often, decide
+      it is time for the next step, send a note-on. This is how a great many hobby synths do it, and it
+      is why they feel slightly loose.
+    </p>
+    <p>
+      The arithmetic is unforgiving. A sixteenth note at 120 BPM is 125 ms. If your events can only
+      land on block boundaries, and a block is 128 samples, then every note is quantised to the nearest
+      2.67 ms — and a browser or OS timer is far worse than that, typically drifting by 5 to 15 ms
+      under load. At that point the sequencer is audibly behind itself, and worse, <em>inconsistently</em>
+      behind itself, which the ear reads as sloppiness rather than lateness.
+    </p>
+    <p>
+      The fix is to count samples instead of milliseconds. The audio callback already knows exactly how
+      much time has passed, because it is handed exactly <code>n</code> samples' worth. So keep a
+      countdown in samples, and when it runs out mid-block, <strong>split the block</strong>: render up
+      to the step boundary, fire the note, render the rest. Steps then land on the exact sample they
+      should, forever, with no drift.
+    </p>
+    <div class="eq"><span class="lbl">samples per sixteenth note</span>
+      step = (fs × 60 / BPM) / 4</div>
+    <p>
+      At 48 kHz and 120 BPM that is 6,000 samples exactly. Swing lengthens the on-beat sixteenth and
+      shortens the off-beat one by the same amount, so the bar still lasts precisely as long — the
+      groove moves, the tempo does not.
+    </p>
+
+    <div class="codetabs" role="group" aria-label="Code listing: a sequencer inside the audio callback">
+      <div class="ct-bar">
+        <span class="ct-title">A sequencer inside the audio callback</span>
+        <span class="sw ct-sw">
+          <button data-lang="rust" class="on" aria-pressed="true">Rust</button>
+          <button data-lang="py" aria-pressed="false">Python</button>
+        </span>
+      </div>
+      <pre data-lang="rust"><code><span class="k">pub</span> <span class="k">struct</span> Seq {
+    notes: [i16; 16],      <span class="c">// -1 means rest</span>
+    accent: [bool; 16],
+    step: usize,
+    to_next: f32,          <span class="c">// samples until the next step</span>
+    gate_left: f32,        <span class="c">// samples until this note releases</span>
+    sounding: <span class="f">Option</span>&lt;u8&gt;,
+    fs: f32, bpm: f32, swing: f32, gate: f32,
+}
+
+<span class="k">impl</span> Seq {
+    <span class="k">fn</span> <span class="f">step_samples</span>(&<span class="k">self</span>) -> f32 { (<span class="k">self</span>.fs * 60.0 / <span class="k">self</span>.bpm) / 4.0 }
+
+    <span class="k">fn</span> <span class="f">advance</span>(&<span class="k">mut</span> <span class="k">self</span>, synth: &<span class="k">mut</span> Synth) {
+        <span class="k">self</span>.step = (<span class="k">self</span>.step + 1) % 16;
+        <span class="c">// Swing: on-beat sixteenths get longer, off-beat ones shorter</span>
+        <span class="c">// by the same amount, so the bar length never changes.</span>
+        <span class="k">let</span> sw = <span class="k">self</span>.swing.<span class="f">clamp</span>(0.0, 0.66) * 0.5;
+        <span class="k">let</span> dur = <span class="k">self</span>.<span class="f">step_samples</span>()
+                * <span class="k">if</span> <span class="k">self</span>.step % 2 == 0 { 1.0 + sw } <span class="k">else</span> { 1.0 - sw };
+        <span class="k">self</span>.to_next = dur;
+
+        <span class="k">let</span> n = <span class="k">self</span>.notes[<span class="k">self</span>.step];
+        <span class="k">if</span> n &gt;= 0 {
+            <span class="k">if</span> <span class="k">let</span> <span class="f">Some</span>(prev) = <span class="k">self</span>.sounding.<span class="f">take</span>() { synth.<span class="f">note_off</span>(prev); }
+            <span class="k">let</span> vel = <span class="k">if</span> <span class="k">self</span>.accent[<span class="k">self</span>.step] { 1.0 } <span class="k">else</span> { 0.6 };
+            synth.<span class="f">note_on</span>(n <span class="k">as</span> u8, vel);
+            <span class="k">self</span>.sounding = <span class="f">Some</span>(n <span class="k">as</span> u8);
+            <span class="k">self</span>.gate_left = dur * <span class="k">self</span>.gate;
+        }
+    }
+
+    <span class="c">/// Split the block at every event. This is what buys you</span>
+    <span class="c">/// sample-accurate timing instead of block-quantised timing.</span>
+    <span class="k">pub</span> <span class="k">fn</span> <span class="f">render</span>(&<span class="k">mut</span> <span class="k">self</span>, synth: &<span class="k">mut</span> Synth, out: &<span class="k">mut</span> [f32]) {
+        <span class="k">let</span> <span class="k">mut</span> i = 0;
+        <span class="k">while</span> i &lt; out.<span class="f">len</span>() {
+            <span class="k">if</span> <span class="k">self</span>.to_next &lt;= 0.0 { <span class="k">self</span>.<span class="f">advance</span>(synth); }
+
+            <span class="k">let</span> <span class="k">mut</span> next = <span class="k">self</span>.to_next;
+            <span class="k">if</span> <span class="k">self</span>.gate_left &gt; 0.0 { next = next.<span class="f">min</span>(<span class="k">self</span>.gate_left); }
+            <span class="k">let</span> chunk = (out.<span class="f">len</span>() - i).<span class="f">min</span>(next.<span class="f">ceil</span>() <span class="k">as</span> usize).<span class="f">max</span>(1);
+
+            synth.<span class="f">render</span>(&<span class="k">mut</span> out[i..i + chunk]);
+            i += chunk;
+            <span class="k">self</span>.to_next -= chunk <span class="k">as</span> f32;
+
+            <span class="k">if</span> <span class="k">self</span>.gate_left &gt; 0.0 {
+                <span class="k">self</span>.gate_left -= chunk <span class="k">as</span> f32;
+                <span class="k">if</span> <span class="k">self</span>.gate_left &lt;= 0.0 {
+                    <span class="k">if</span> <span class="k">let</span> <span class="f">Some</span>(n) = <span class="k">self</span>.sounding.<span class="f">take</span>() { synth.<span class="f">note_off</span>(n); }
+                }
+            }
+        }
+    }
+}</code></pre>
+      <pre data-lang="py" hidden><code><span class="k">import</span> math
+
+<span class="k">class</span> <span class="f">Seq</span>:
+    <span class="k">def</span> <span class="f">__init__</span>(<span class="k">self</span>, fs, synth):
+        <span class="k">self</span>.fs, <span class="k">self</span>.synth = fs, synth
+        <span class="k">self</span>.notes  = [-1] * 16          <span class="c"># -1 means rest</span>
+        <span class="k">self</span>.accent = [<span class="k">False</span>] * 16
+        <span class="k">self</span>.step, <span class="k">self</span>.sounding = 15, <span class="k">None</span>
+        <span class="k">self</span>.to_next = <span class="k">self</span>.gate_left = 0.0
+        <span class="k">self</span>.bpm, <span class="k">self</span>.swing, <span class="k">self</span>.gate = 120.0, 0.0, 0.55
+
+    <span class="k">def</span> <span class="f">step_samples</span>(<span class="k">self</span>):
+        <span class="k">return</span> (<span class="k">self</span>.fs * 60.0 / <span class="k">self</span>.bpm) / 4.0
+
+    <span class="k">def</span> <span class="f">advance</span>(<span class="k">self</span>):
+        <span class="k">self</span>.step = (<span class="k">self</span>.step + 1) % 16
+        <span class="c"># Swing: on-beat sixteenths longer, off-beat shorter by the</span>
+        <span class="c"># same amount, so the bar length never changes.</span>
+        sw  = <span class="f">min</span>(<span class="f">max</span>(<span class="k">self</span>.swing, 0.0), 0.66) * 0.5
+        dur = <span class="k">self</span>.<span class="f">step_samples</span>() * (1 + sw <span class="k">if</span> <span class="k">self</span>.step % 2 == 0 <span class="k">else</span> 1 - sw)
+        <span class="k">self</span>.to_next = dur
+
+        n = <span class="k">self</span>.notes[<span class="k">self</span>.step]
+        <span class="k">if</span> n &gt;= 0:
+            <span class="k">if</span> <span class="k">self</span>.sounding <span class="k">is</span> <span class="k">not</span> <span class="k">None</span>:
+                <span class="k">self</span>.synth.<span class="f">note_off</span>(<span class="k">self</span>.sounding)
+            vel = 1.0 <span class="k">if</span> <span class="k">self</span>.accent[<span class="k">self</span>.step] <span class="k">else</span> 0.6
+            <span class="k">self</span>.synth.<span class="f">note_on</span>(n, vel)
+            <span class="k">self</span>.sounding  = n
+            <span class="k">self</span>.gate_left = dur * <span class="k">self</span>.gate
+
+    <span class="k">def</span> <span class="f">render</span>(<span class="k">self</span>, out):
+        <span class="s">"""Split the block at every event. This is what buys you
+        sample-accurate timing instead of block-quantised timing."""</span>
+        i = 0
+        <span class="k">while</span> i &lt; <span class="f">len</span>(out):
+            <span class="k">if</span> <span class="k">self</span>.to_next &lt;= 0:
+                <span class="k">self</span>.<span class="f">advance</span>()
+
+            nxt = <span class="k">self</span>.to_next
+            <span class="k">if</span> <span class="k">self</span>.gate_left &gt; 0:
+                nxt = <span class="f">min</span>(nxt, <span class="k">self</span>.gate_left)
+            chunk = <span class="f">max</span>(1, <span class="f">min</span>(<span class="f">len</span>(out) - i, <span class="f">int</span>(math.<span class="f">ceil</span>(nxt))))
+
+            <span class="c"># out is a numpy array, so this slice is a view, not a copy —</span>
+            <span class="c"># the synth writes straight into the output buffer.</span>
+            <span class="k">self</span>.synth.<span class="f">render</span>(out[i:i + chunk])
+            i += chunk
+            <span class="k">self</span>.to_next -= chunk
+
+            <span class="k">if</span> <span class="k">self</span>.gate_left &gt; 0:
+                <span class="k">self</span>.gate_left -= chunk
+                <span class="k">if</span> <span class="k">self</span>.gate_left &lt;= 0 <span class="k">and</span> <span class="k">self</span>.sounding <span class="k">is</span> <span class="k">not</span> <span class="k">None</span>:
+                    <span class="k">self</span>.synth.<span class="f">note_off</span>(<span class="k">self</span>.sounding)
+                    <span class="k">self</span>.sounding = <span class="k">None</span></code></pre>
+    </div>
+
+    <p>
+      The panel below runs exactly this, in an <code>AudioWorklet</code>. The playhead you see stepping
+      across the grid is the audio thread reporting its own position back, not a UI timer guessing.
+    </p>
+
+    <div class="module" data-demo="instrument">
+      <div class="mod-head">
+        <p class="mod-name">K · The instrument</p>
+        <span class="mod-kind">Sequencer · 8 voices · 2 osc + sub + noise · filter · 2 envelopes · LFO · 3 effects</span>
+      </div>
+      <div class="mod-body">
+        <canvas class="scope tall" data-flow aria-label="Signal path diagram showing which stages are active"></canvas>
+        <div class="seq-wrap" data-seq></div>
+        <div class="ctrls">
+          <span class="sw-cell"><span class="lab">Sequencer</span>
+            <span class="sw" data-p="run" data-num>
+              <button data-v="0" class="on">Stop</button>
+              <button data-v="1">Run</button>
+            </span></span>
+          <span class="sw-cell"><span class="lab">Pattern</span>
+            <span class="sw">
+              <button data-pattern="acid">Acid</button>
+              <button data-pattern="arp">Arp</button>
+              <button data-pattern="bass">Bass</button>
+              <button data-pattern="clear">Clear</button>
+            </span></span>
+          <span class="knob-cell"><span class="knob" data-p="bpm" data-label="Tempo"
+            data-min="60" data-max="190" data-val="112" data-unit="BPM" data-dec="0"></span>
+            <span class="lab">Tempo</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob cv" data-p="swing" data-label="Swing"
+            data-min="0" data-max="0.66" data-val="0" data-dec="2"></span>
+            <span class="lab">Swing</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob cv" data-p="gate" data-label="Gate length"
+            data-min="0.05" data-max="1.3" data-val="0.55" data-dec="2"></span>
+            <span class="lab">Gate</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob cv" data-p="octave" data-label="Octave shift"
+            data-min="-2" data-max="2" data-val="0" data-dec="0"></span>
+            <span class="lab">Octave</span><span class="val"></span></span>
+          <span class="sw-cell"><span class="lab">Patch</span>
+            <span class="sw">
+              <button data-preset="bass">Bass</button>
+              <button data-preset="pluck">Pluck</button>
+              <button data-preset="lead">Lead</button>
+              <button data-preset="pad">Pad</button>
+            </span></span>
+          <span class="sw-cell"><span class="lab">Transport</span>
+            <button class="btn hot" data-play aria-pressed="false">Engine off</button></span>
+        </div>
+
+        <div class="ctrls" style="margin-top:20px;border-top:1px solid #171E1D;padding-top:18px">
+          <span class="sw-cell"><span class="lab">Osc 1</span>
+            <span class="sw" data-p="o1">
+              <button data-v="saw" class="on">Saw</button>
+              <button data-v="square">Pulse</button>
+              <button data-v="tri">Tri</button>
+            </span></span>
+          <span class="sw-cell"><span class="lab">Osc 2</span>
+            <span class="sw" data-p="o2">
+              <button data-v="saw">Saw</button>
+              <button data-v="square" class="on">Pulse</button>
+              <button data-v="tri">Tri</button>
+            </span></span>
+          <span class="knob-cell"><span class="knob" data-p="mix" data-label="Oscillator mix"
+            data-min="0" data-max="1" data-val="0.35" data-dec="2"></span>
+            <span class="lab">Osc mix</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob cv" data-p="o2cents" data-label="Osc 2 detune"
+            data-min="-30" data-max="30" data-val="7" data-unit="c" data-dec="1"></span>
+            <span class="lab">Detune</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="subLvl" data-label="Sub oscillator"
+            data-min="0" data-max="1" data-val="0.3" data-dec="2"></span>
+            <span class="lab">Sub</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="noiseLvl" data-label="Noise"
+            data-min="0" data-max="0.6" data-val="0" data-dec="2"></span>
+            <span class="lab">Noise</span><span class="val"></span></span>
+          <span class="sw-cell"><span class="lab">Filter</span>
+            <span class="sw" data-p="filt">
+              <button data-v="svf" class="on">SVF</button>
+              <button data-v="lad">Ladder</button>
+            </span></span>
+          <span class="knob-cell"><span class="knob" data-p="cutoff" data-label="Filter cutoff"
+            data-min="40" data-max="16000" data-curve="log" data-val="800" data-unit="Hz" data-dec="0"></span>
+            <span class="lab">Cutoff</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="res" data-label="Resonance"
+            data-min="0" data-max="0.95" data-val="0.55" data-dec="2"></span>
+            <span class="lab">Res</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob cv" data-p="fEnvAmt" data-label="Filter envelope amount"
+            data-min="-3" data-max="5" data-val="2.8" data-unit="oct" data-dec="1"></span>
+            <span class="lab">Env → fc</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob cv" data-p="fD" data-label="Filter decay"
+            data-min="0.005" data-max="4" data-curve="log" data-val="0.22" data-unit="s" data-dec="2"></span>
+            <span class="lab">Filt D</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob cv" data-p="keytrack" data-label="Key tracking"
+            data-min="0" data-max="1.2" data-val="0.4" data-dec="2"></span>
+            <span class="lab">Keytrack</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="aD" data-label="Amp decay"
+            data-min="0.005" data-max="4" data-curve="log" data-val="0.3" data-unit="s" data-dec="2"></span>
+            <span class="lab">Amp D</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="aS" data-label="Amp sustain"
+            data-min="0" data-max="1" data-val="0.35" data-dec="2"></span>
+            <span class="lab">Amp S</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="aR" data-label="Amp release"
+            data-min="0.005" data-max="5" data-curve="log" data-val="0.25" data-unit="s" data-dec="2"></span>
+            <span class="lab">Amp R</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob cv" data-p="lfoRate" data-label="LFO rate"
+            data-min="0.05" data-max="18" data-curve="log" data-val="4.5" data-unit="Hz" data-dec="2"></span>
+            <span class="lab">LFO rate</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob cv" data-p="lfoCut" data-label="LFO to cutoff"
+            data-min="0" data-max="3" data-val="0" data-unit="oct" data-dec="2"></span>
+            <span class="lab">→ Cutoff</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="chorMix" data-label="Chorus depth"
+            data-min="0" data-max="1" data-val="0" data-dec="2"></span>
+            <span class="lab">Chorus</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="dlyMix" data-label="Delay mix"
+            data-min="0" data-max="0.9" data-val="0" data-dec="2"></span>
+            <span class="lab">Delay</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="dlyTime" data-label="Delay time"
+            data-min="0.02" data-max="1.2" data-curve="log" data-val="0.26" data-unit="s" data-dec="3"></span>
+            <span class="lab">Dly time</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="revMix" data-label="Reverb mix"
+            data-min="0" data-max="0.9" data-val="0" data-dec="2"></span>
+            <span class="lab">Reverb</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="master" data-label="Master level"
+            data-min="0" data-max="1" data-val="0.55" data-dec="2"></span>
+            <span class="lab">Master</span><span class="val"></span></span>
+          <span class="sw-cell"><span class="lab">Panic</span>
+            <button class="btn" data-panic>All notes off</button></span>
+        </div>
+
+        <div class="voices" data-voices aria-label="Voice activity"></div>
+        <div class="scope-row two" style="margin-top:16px">
+          <canvas class="scope" data-scope aria-label="Main output"></canvas>
+          <canvas class="scope" data-spec aria-label="Output spectrum"></canvas>
+        </div>
+        <div class="keys" data-keys role="group" aria-label="Musical keyboard"></div>
+        <div class="readout" data-readout></div>
+      </div>
+      <div class="mod-note">
+        Press <b>Engine off</b> to start audio, then set the sequencer to <b>Run</b>.
+        Click any cell in the grid to place or clear a note — you can edit while it plays. The
+        <b>acc</b> row underneath adds accent, which raises velocity, which opens the filter further
+        on that step; that is the whole trick behind an acid line.
+        The diagram at the top dims the stages that are currently bypassed, so you can see the signal
+        path change as you turn things up.
+      </div>
+    </div>
+
+    <h3>Reading a patch</h3>
+    <p>
+      Four recipes, each expressed as a chain of decisions rather than a list of numbers. Load the
+      pattern, load the patch, then change one thing at a time and listen for what it does.
+    </p>
+    <table>
+      <tr><th>Sound</th><th>The decisions</th></tr>
+      <tr><td><strong>Acid bass</strong></td>
+        <td>Ladder filter for the saturation. Low cutoff, high resonance, a big filter envelope with a
+          short decay. Accent raises velocity, which opens the filter further — so accented steps
+          squelch and the rest do not. Gate short, so notes separate.</td></tr>
+      <tr><td><strong>Pluck</strong></td>
+        <td>Sustain at zero on both envelopes: the note is entirely attack and decay. High key tracking
+          so the top of the keyboard stays bright. A little delay for space.</td></tr>
+      <tr><td><strong>Pad</strong></td>
+        <td>Slow attack on both envelopes, two saws detuned by 10 or so cents, a slow LFO on cutoff, and
+          plenty of reverb. Detune is what makes it wide; without it, two saws in unison are just a
+          louder saw.</td></tr>
+      <tr><td><strong>Lead</strong></td>
+        <td>Osc 2 up a fifth, moderate resonance, a touch of LFO on pitch for vibrato. Turn the
+          sequencer off and play it from the keyboard.</td></tr>
+    </table>
+
+    <div class="note build">
+      <span class="k">Three experiments worth doing</span>
+      <p>
+        <strong>One.</strong> Load Acid, run it, and slowly sweep <b>Cutoff</b> while raising
+        <b>Res</b> toward 0.9. That is Chapter 5 doing the single most recognisable thing in
+        electronic music.
+      </p>
+      <p>
+        <strong>Two.</strong> Set <b>Gate</b> above 1.0 so each note overruns the next. Watch the voice
+        meters: notes now overlap, and the allocator from Chapter 7 starts handing out second and third
+        voices for a line you thought was monophonic.
+      </p>
+      <p>
+        <strong>Three.</strong> Turn <b>Swing</b> to 0.4 and count along. The bar still takes exactly as
+        long — check it against the tempo — but the off-beats arrive late. Groove is arithmetic.
+      </p>
+    </div>
+
+    <h3>What was deliberately left out</h3>
+    <p>
+      This synth is complete enough to be useful and small enough to hold in your head. The obvious next
+      steps, roughly in order of how much they improve the sound per hour spent:
+    </p>
+    <ul>
+      <li><strong>Unison and supersaw.</strong> Seven detuned saws per voice instead of two, with
+        stereo spread. The cheapest large improvement in perceived quality there is.</li>
+      <li><strong>Oversampling the nonlinear stages.</strong> The ladder's saturator aliases, as
+        Chapter 5 warned. Run it at 4× and filter, and the filter stops sounding fizzy when driven.</li>
+      <li><strong>A real modulation matrix.</strong> Chapter 6 described one; this synth has fixed
+        routings. Sources × destinations × depth, evaluated per block.</li>
+      <li><strong>Sample-accurate MIDI.</strong> The same block-splitting the sequencer does, applied
+        to incoming MIDI events.</li>
+      <li><strong>Stereo.</strong> Everything here is mono. Pan per voice, stereo effects, and a
+        widener are mostly plumbing but transform the result.</li>
+      <li><strong>Patch save and load.</strong> Dull, and the first thing you will want once you find a
+        sound you like.</li>
+      <li><strong>MPE.</strong> Per-note pitch and pressure, if you have a controller that sends it.</li>
+    </ul>
+
+    <div class="checkpoint">
+      <span class="k">Checkpoint 09</span>
+      <p>
+        You have an instrument. It plays in time, it does not click, it does not alias, and every knob
+        on it is something you could rewrite from scratch. The remaining work is taste.
+      </p>
+    </div>
+  </div>
+</section>
+
 <!-- ================= REFERENCES ================= -->
 <section class="chapter" id="refs">
   <div class="wrap">
@@ -4292,9 +4726,92 @@ class FXEngine extends PolyEngine {
   constructor(fs) { super(fs, 6); }
 }
 
+/* ---------- CH 9 : the instrument ----------------------------
+   A step sequencer that lives inside the audio callback. Timing a
+   sequencer from the UI thread means every note lands on a block
+   boundary and jitters by milliseconds; counting samples here means
+   a step falls exactly where it should. The render loop splits each
+   block at the next step boundary and at the next gate release.
+   ------------------------------------------------------------ */
+class SeqEngine extends PolyEngine {
+  constructor(fs) {
+    super(fs, 8);
+    this.NSTEPS = 16;
+    this.notes = new Int16Array(this.NSTEPS).fill(-1);  /* -1 = rest */
+    this.accent = new Uint8Array(this.NSTEPS);
+    this.stepIndex = this.NSTEPS - 1;
+    this.toNext = 0;          /* samples until the next step   */
+    this.gateLeft = 0;        /* samples until this note releases */
+    this.sounding = -1;
+    this.scratch = new Float32Array(256);
+    this.p.bpm = 112; this.p.swing = 0; this.p.gate = 0.55;
+    this.p.run = 0; this.p.octave = 0;
+  }
+  onParam(k, v) {
+    super.onParam(k, v);
+    if (k === 'run' && !v) this.stop();
+  }
+  stop() {
+    this.allOff();
+    this.sounding = -1; this.gateLeft = 0; this.toNext = 0;
+    this.stepIndex = this.NSTEPS - 1;
+  }
+  setStep(i, note, acc) {
+    if (i < 0 || i >= this.NSTEPS) return;
+    this.notes[i] = note; this.accent[i] = acc ? 1 : 0;
+  }
+  /* What the display needs. Sent back with the scope frames. */
+  uiState() { return { step: this.p.run ? this.stepIndex : -1 }; }
+
+  _stepSamples() {
+    const spb = this.fs * 60 / clamp(this.p.bpm, 40, 220);
+    return spb / 4;                       /* sixteenth notes */
+  }
+  _advance() {
+    this.stepIndex = (this.stepIndex + 1) % this.NSTEPS;
+    /* Swing lengthens the on-beat sixteenth and shortens the off-beat
+       one by the same amount, so the bar still lasts exactly as long. */
+    const sw = clamp(this.p.swing, 0, 0.66) * 0.5;
+    const base = this._stepSamples();
+    const dur = base * (this.stepIndex % 2 === 0 ? 1 + sw : 1 - sw);
+    this.toNext = dur;
+
+    const n = this.notes[this.stepIndex];
+    if (n >= 0) {
+      if (this.sounding >= 0) this.noteOff(this.sounding);
+      const note = clamp(n + this.p.octave * 12, 12, 108);
+      this.noteOn(note, this.accent[this.stepIndex] ? 1 : 0.6);
+      this.sounding = note;
+      this.gateLeft = dur * clamp(this.p.gate, 0.05, 1.35);
+    }
+  }
+  render(out, n) {
+    if (!this.p.run) { super.render(out, n); return; }
+    let i = 0;
+    while (i < n) {
+      if (this.toNext <= 0) this._advance();
+      /* Stop at whichever comes first: the end of the block, the next
+         step, or the gate release. Never overshoot an event. */
+      let next = this.toNext;
+      if (this.gateLeft > 0) next = Math.min(next, this.gateLeft);
+      const chunk = Math.max(1, Math.min(n - i, Math.ceil(next), 256));
+      super.render(this.scratch, chunk);
+      for (let k = 0; k < chunk; k++) out[i + k] = this.scratch[k];
+      i += chunk;
+      this.toNext -= chunk;
+      if (this.gateLeft > 0) {
+        this.gateLeft -= chunk;
+        if (this.gateLeft <= 0 && this.sounding >= 0) {
+          this.noteOff(this.sounding); this.sounding = -1;
+        }
+      }
+    }
+  }
+}
+
 const ENGINES = {
   tone: ToneEngine, osc: OscEngine, env: EnvEngine,
-  filter: FilterEngine, fm: FMEngine, poly: PolyEngine, fx: FXEngine
+  filter: FilterEngine, fm: FMEngine, poly: PolyEngine, fx: FXEngine, seq: SeqEngine
 };
 
 </script>
@@ -4333,6 +4850,7 @@ class SignalPathProcessor extends AudioWorkletProcessor {
         else { this.eng.note(m.on); }
       }
       else if(m.t==='alloff'){ if(this.eng.allOff) this.eng.allOff(); }
+      else if(m.t==='step'){ if(this.eng.setStep) this.eng.setStep(m.i, m.n, m.a); }
       else if(m.t==='bye'){ this.dead = true; }
     };
   }
@@ -4348,6 +4866,7 @@ class SignalPathProcessor extends AudioWorkletProcessor {
       this.snap.set(this.ring.subarray(0, w), L - w);
       const msg = { t:'scope', d:this.snap };
       if(this.eng.voiceState) msg.v = this.eng.voiceState();
+      if(this.eng.uiState) msg.u = this.eng.uiState();
       this.port.postMessage(msg);   /* structured clone copies; we keep our buffer */
     }
     return true;
@@ -4391,7 +4910,7 @@ const Audio = {
    nothing. Parameters are cached and replayed on every start. */
 class Rig {
   constructor(kind) {
-    this.kind = kind; this.node = null; this.params = {}; this.shape = null;
+    this.kind = kind; this.node = null; this.params = {}; this.shape = null; this.steps = [];
     this.onScope = null; this.onVoices = null; this.running = false;
     Audio.rigs.add(this);
   }
@@ -4399,6 +4918,11 @@ class Rig {
     this.params[k] = v;
     if (this.node) this._msg({ t: 'p', k, v });
     if (this.fallbackEngine) this.fallbackEngine.setParam(k, v);
+  }
+  setStep(i, n, a) {
+    this.steps[i] = { n, a };
+    if (this.node) this._msg({ t: 'step', i, n, a });
+    if (this.fallbackEngine) this.fallbackEngine.setStep(i, n, a);
   }
   setShape(s) { this.shape = s; if (this.node) this._msg({ t: 'shape', v: s }); if (this.fallbackEngine) this.fallbackEngine.setShape(s); }
   note(on, n, v) {
@@ -4422,10 +4946,15 @@ class Rig {
       });
       this.node.port.onmessage = e => {
         const m = e.data;
-        if (m.t === 'scope') { if (this.onScope) this.onScope(m.d); if (m.v && this.onVoices) this.onVoices(m.v); }
+        if (m.t === 'scope') {
+          if (this.onScope) this.onScope(m.d);
+          if (m.v && this.onVoices) this.onVoices(m.v);
+          if (m.u && this.onUi) this.onUi(m.u);
+        }
       };
       for (const k in this.params) this._msg({ t: 'p', k, v: this.params[k] });
       if (this.shape) this._msg({ t: 'shape', v: this.shape });
+      this.steps.forEach((s, i) => { if (s) this._msg({ t: 'step', i, n: s.n, a: s.a }); });
       this.node.connect(Audio.master);
     } else {
       /* ScriptProcessor fallback: identical engine code, run on
@@ -4433,6 +4962,7 @@ class Rig {
       const e = new D.ENGINES[this.kind](Audio.ctx.sampleRate);
       for (const k in this.params) e.setParam(k, this.params[k]);
       if (this.shape && e.setShape) e.setShape(this.shape);
+      if (e.setStep) this.steps.forEach((s, i) => { if (s) e.setStep(i, s.n, s.a); });
       this.fallbackEngine = e;
       const sp = Audio.ctx.createScriptProcessor(1024, 0, 1);
       const ring = new Float32Array(2048); let w = 0, f = 0;
@@ -4445,6 +4975,7 @@ class Rig {
           s.set(ring.subarray(w), 0); s.set(ring.subarray(0, w), 2048 - w);
           this.onScope(s);
           if (e.voiceState && this.onVoices) this.onVoices(e.voiceState());
+          if (e.uiState && this.onUi) this.onUi(e.uiState());
         }
       };
       sp.connect(Audio.master);
@@ -5407,6 +5938,248 @@ const PRESETS = {
   pad: { o1: 'saw', o2: 'saw', o2cents: 11, o2semi: 0, mix: 0.5, subLvl: 0.15, noiseLvl: 0.03, filt: 'svf', cutoff: 1300, res: 0.28, fEnvAmt: 1.6, keytrack: 0.5, aA: 0.55, aD: 1.2, aS: 0.75, aR: 1.3, fA: 0.9, fD: 1.6, fS: 0.5, fR: 1.2, lfoRate: 0.35, lfoCut: 0.5, master: 0.45 },
   pluck: { o1: 'square', o2: 'saw', o2cents: 6, o2semi: 12, mix: 0.3, subLvl: 0.1, noiseLvl: 0, filt: 'svf', cutoff: 900, res: 0.55, fEnvAmt: 3.4, keytrack: 0.7, aA: 0.002, aD: 0.16, aS: 0.0, aR: 0.14, fA: 0.001, fD: 0.13, fS: 0.0, fR: 0.12, lfoCut: 0, master: 0.55 },
   lead: { o1: 'saw', o2: 'saw', o2cents: 9, o2semi: 7, mix: 0.42, subLvl: 0.2, noiseLvl: 0, filt: 'lad', cutoff: 1800, res: 0.45, fEnvAmt: 1.4, keytrack: 0.6, aA: 0.02, aD: 0.5, aS: 0.7, aR: 0.3, fA: 0.01, fD: 0.4, fS: 0.4, fR: 0.3, lfoRate: 5.2, lfoPitch: 0.14, master: 0.5 }
+};
+
+/* ---------- CH9 · the instrument -----------------------------
+   The whole book in one panel: sequencer, two oscillators, sub,
+   noise, filter, two envelopes, LFO, and three effects.
+   ------------------------------------------------------------ */
+const PATTERNS = {
+  acid:  { n: [36, -1, 36, 48, -1, 36, 39, -1, 36, -1, 43, 36, -1, 41, -1, 48],
+           a: [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1] },
+  /* Every pattern must fit the 36..48 range the grid displays,
+     or notes play that the reader cannot see or edit. */
+  arp:   { n: [36, 40, 43, 48, 43, 40, 36, 40, 38, 41, 45, 48, 45, 41, 38, 41],
+           a: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] },
+  bass:  { n: [36, -1, -1, 36, -1, 36, -1, -1, 41, -1, -1, 41, -1, 43, -1, 43],
+           a: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0] },
+  clear: { n: new Array(16).fill(-1), a: new Array(16).fill(0) }
+};
+
+DEMOS.instrument = root => {
+  const rig = new Rig('seq');
+  const scope = root.querySelector('[data-scope]');
+  const spec = root.querySelector('[data-spec]');
+  const flow = root.querySelector('[data-flow]');
+  const seqEl = root.querySelector('[data-seq]');
+  const kb = root.querySelector('[data-keys]');
+  const vm = root.querySelector('[data-voices]');
+  const out = root.querySelector('[data-readout]');
+
+  const NSTEP = 16, LOW = 36, ROWS = 13;      /* C2 upward, one octave + 1 */
+  const NOTE = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const isBlack = m => [1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12);
+  const notes = new Array(NSTEP).fill(-1);
+  const accents = new Array(NSTEP).fill(0);
+  let playhead = -1;
+
+  /* ---- build the grid ---- */
+  const cells = [];
+  const nums = [];
+  const accEls = [];
+  const grid = document.createElement('div');
+  grid.className = 'seq-grid';
+  grid.setAttribute('role', 'group');
+  grid.setAttribute('aria-label', '16 step sequencer, one octave of pitches');
+
+  const spacer = document.createElement('div');
+  grid.appendChild(spacer);
+  for (let c = 0; c < NSTEP; c++) {
+    const n = document.createElement('div');
+    n.className = 'seq-num';
+    n.textContent = c + 1;
+    nums.push(n); grid.appendChild(n);
+  }
+  for (let r = 0; r < ROWS; r++) {
+    const midi = LOW + (ROWS - 1 - r);
+    const lab = document.createElement('div');
+    lab.className = 'seq-lab';
+    lab.textContent = NOTE[midi % 12] + (Math.floor(midi / 12) - 1);
+    grid.appendChild(lab);
+    for (let c = 0; c < NSTEP; c++) {
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'seq-cell' + (isBlack(midi) ? ' blk' : '');
+      cell.dataset.r = r; cell.dataset.c = c; cell.dataset.midi = midi;
+      cell.setAttribute('aria-label',
+        `Step ${c + 1}, ${NOTE[midi % 12]}${Math.floor(midi / 12) - 1}`);
+      cell.setAttribute('aria-pressed', 'false');
+      cell.addEventListener('click', () => {
+        notes[c] = (notes[c] === midi) ? -1 : midi;   /* click again to clear */
+        push(c); paint();
+      });
+      cells.push(cell); grid.appendChild(cell);
+    }
+  }
+  const alab = document.createElement('div');
+  alab.className = 'seq-lab'; alab.textContent = 'acc';
+  grid.appendChild(alab);
+  for (let c = 0; c < NSTEP; c++) {
+    const a = document.createElement('button');
+    a.type = 'button'; a.className = 'seq-acc';
+    a.setAttribute('aria-label', `Accent on step ${c + 1}`);
+    a.setAttribute('aria-pressed', 'false');
+    a.addEventListener('click', () => { accents[c] = accents[c] ? 0 : 1; push(c); paint(); });
+    accEls.push(a); grid.appendChild(a);
+  }
+  seqEl.appendChild(grid);
+
+  const push = c => rig.setStep(c, notes[c], accents[c]);
+  const pushAll = () => { for (let c = 0; c < NSTEP; c++) push(c); };
+
+  function paint() {
+    for (const cell of cells) {
+      const c = +cell.dataset.c, midi = +cell.dataset.midi;
+      const on = notes[c] === midi;
+      cell.classList.toggle('on', on);
+      cell.classList.toggle('acc', on && !!accents[c]);
+      cell.classList.toggle('now', c === playhead);
+      cell.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    accEls.forEach((a, c) => {
+      a.classList.toggle('on', !!accents[c]);
+      a.setAttribute('aria-pressed', accents[c] ? 'true' : 'false');
+    });
+    nums.forEach((n, c) => n.classList.toggle('now', c === playhead));
+  }
+
+  const loadPattern = name => {
+    const p = PATTERNS[name]; if (!p) return;
+    for (let c = 0; c < NSTEP; c++) { notes[c] = p.n[c]; accents[c] = p.a[c]; }
+    pushAll(); paint(); info();
+  };
+
+  /* ---- signal path diagram ---- */
+  function drawFlow() {
+    const { g, w, h } = fitCanvas(flow);
+    g.fillStyle = '#141A19'; g.fillRect(0, 0, w, h);
+    const chain = [
+      { t: 'SOURCES', ch: '03', on: true,
+        sub: [p.o1, p.mix > 0.02 ? p.o2 : null, p.subLvl > 0.02 ? 'sub' : null,
+              p.noiseLvl > 0.02 ? 'noise' : null].filter(Boolean).join(' + ') },
+      { t: p.filt === 'lad' ? 'LADDER' : 'SVF', ch: '05', on: true,
+        sub: (p.cutoff >= 1000 ? (p.cutoff / 1000).toFixed(1) + 'k' : Math.round(p.cutoff)) + ' Hz' },
+      { t: 'VCA', ch: '04', on: true, sub: 'adsr' },
+      { t: 'CHORUS', ch: '08', on: p.chorMix > 0.005, sub: p.chorMix.toFixed(2) },
+      { t: 'DELAY', ch: '08', on: p.dlyMix > 0.005, sub: Math.round(p.dlyTime * 1000) + ' ms' },
+      { t: 'REVERB', ch: '08', on: p.revMix > 0.005, sub: p.revMix.toFixed(2) }
+    ];
+    const pad = 10, gap = 8, topY = 26;
+    const bw = (w - pad * 2 - gap * chain.length - 34) / chain.length;
+    const bh = Math.min(50, h - topY - 46);
+    chain.forEach((b, i) => {
+      const x = pad + i * (bw + gap);
+      g.globalAlpha = b.on ? 1 : 0.32;
+      g.fillStyle = '#1E2625'; g.fillRect(x, topY, bw, bh);
+      g.strokeStyle = b.on ? AUDIO_C : '#3E4A47'; g.lineWidth = 1.4;
+      g.strokeRect(x + .5, topY + .5, bw - 1, bh - 1);
+      g.fillStyle = b.on ? SILK_C : '#5C6764';
+      g.font = '600 10px "Barlow Condensed", sans-serif';
+      g.textAlign = 'center';
+      g.fillText(b.t, x + bw / 2, topY + 17);
+      g.font = '8.5px "IBM Plex Mono", monospace';
+      g.fillStyle = '#66716D';
+      g.fillText(b.sub || '', x + bw / 2, topY + 31);
+      g.fillStyle = b.on ? AUDIO_C : '#3E4A47';
+      g.fillText('ch ' + b.ch, x + bw / 2, topY + 44);
+      g.textAlign = 'left';
+      /* connector */
+      const cx = x + bw, cy = topY + bh / 2;
+      g.strokeStyle = b.on ? AUDIO_C : '#333D3A';
+      g.beginPath(); g.moveTo(cx + 1, cy); g.lineTo(cx + gap - 1, cy); g.stroke();
+      if (i === chain.length - 1) {
+        g.fillStyle = SILK_C; g.font = '600 10px "Barlow Condensed", sans-serif';
+        g.fillText('OUT', cx + gap + 2, cy + 3);
+      }
+      g.globalAlpha = 1;
+    });
+    /* modulation, drawn beneath in control-signal teal */
+    const mods = [
+      { t: 'SEQ ch09', on: !!p.run },
+      { t: 'FILT ENV ch04', on: Math.abs(p.fEnvAmt) > 0.05 },
+      { t: 'AMP ENV ch04', on: true },
+      { t: 'LFO ch06', on: p.lfoCut > 0.01 || p.lfoPitch > 0.01 }
+    ];
+    const my = topY + bh + 16;
+    g.font = '8.5px "IBM Plex Mono", monospace';
+    let mx = pad;
+    mods.forEach(m => {
+      g.globalAlpha = m.on ? 1 : 0.3;
+      g.fillStyle = CV_C;
+      g.beginPath(); g.arc(mx + 3, my - 3, 3, 0, D.TAU); g.fill();
+      g.fillStyle = m.on ? CV_C : '#4A5754';
+      g.fillText(m.t, mx + 11, my - 7);
+      mx += g.measureText(m.t).width + 30;
+      g.globalAlpha = 1;
+    });
+    label(g, pad, 8, 'signal path — dimmed stages are bypassed', '#66716D');
+  }
+
+  /* ---- wiring ---- */
+  let p = {};
+  Object.assign(p, bindRig(root, rig, (k, v) => {
+    p[k] = v; info(); drawFlow();
+    /* Pressing Run should just work, rather than silently doing
+       nothing until the engine has been started separately. */
+    if (k === 'run' && v) rig.start();
+  }));
+
+  if (kb) buildKeyboard(kb, 48, 2, (on, n, v) => rig.start().then(() => rig.note(on, n, v)));
+  if (vm) rig.onVoices = st => {
+    if (vm.children.length !== st.length) {
+      vm.innerHTML = '';
+      for (let i = 0; i < st.length; i++) {
+        const d = document.createElement('div');
+        d.innerHTML = `<span></span><b>${i + 1}</b>`;
+        vm.appendChild(d);
+      }
+    }
+    for (let i = 0; i < vm.children.length; i++) {
+      const s = st[i] || 0, bar = vm.children[i].firstElementChild;
+      bar.style.height = s === 2 ? '100%' : s === 1 ? '45%' : '0%';
+      bar.style.background = s === 2 ? AUDIO_C : CV_C;
+    }
+  };
+  rig.onUi = u => { if (u.step !== playhead) { playhead = u.step; paint(); } };
+
+  root.querySelectorAll('[data-pattern]').forEach(b =>
+    b.addEventListener('click', () => loadPattern(b.dataset.pattern)));
+  root.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+    const pr = PRESETS[b.dataset.preset]; if (!pr) return;
+    for (const k in pr) {
+      rig.set(k, pr[k]); p[k] = pr[k];
+      const knob = root.querySelector(`.knob[data-p="${k}"]`);
+      if (knob && knob._set) knob._set(pr[k]);
+      const sw = root.querySelector(`.sw[data-p="${k}"]`);
+      if (sw && sw._pick) sw._pick(pr[k]);
+    }
+    info(); drawFlow();
+  }));
+  const panic = root.querySelector('[data-panic]');
+  if (panic) panic.addEventListener('click', () => rig.allOff());
+
+  function info() {
+    const live = notes.filter(n => n >= 0).length;
+    const spb = (60 / (p.bpm || 112) / 4 * 1000).toFixed(0);
+    out.innerHTML =
+      `<b>${p.bpm ? p.bpm.toFixed(0) : 112} BPM</b> · a sixteenth is <b>${spb} ms</b> · ` +
+      `swing <b>${((p.swing || 0) * 100).toFixed(0)}%</b> · gate <b>${((p.gate || 0) * 100).toFixed(0)}%</b> of a step · ` +
+      `<i>${live} of 16 steps active</i>\n` +
+      `${p.o1} + ${p.o2} detuned ${(p.o2cents || 0).toFixed(0)} cents ` +
+      `→ ${p.filt === 'lad' ? 'ladder' : 'SVF'} at ${(p.cutoff / 1000).toFixed(2)} kHz, res ${(p.res || 0).toFixed(2)}, ` +
+      `env ${(p.fEnvAmt || 0).toFixed(1)} oct → amp ADSR → fx\n` +
+      `press <b>Run</b>, then edit the grid while it plays. The keyboard still works underneath.`;
+  }
+
+  loadPattern('acid');
+  info();
+  new ResizeObserver(drawFlow).observe(flow);
+  drawFlow();
+  scopeLoop(root, rig, d => {
+    drawScope(scope, d, { span: 1100, caption: 'main out', clip: true });
+    if (spec) drawSpectrum(spec, d, SR(), { caption: 'spectrum', fill: true, color: AUDIO_C });
+  });
+  transport(root, rig, { onLabel: 'Engine on', offLabel: 'Engine off' });
 };
 
 /* ============================================================
