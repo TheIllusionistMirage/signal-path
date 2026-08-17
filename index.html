@@ -207,14 +207,31 @@ pre code{background:none;border:0;padding:0;font-size:inherit;color:inherit}
 /* Code listings with a language switch */
 .codetabs{margin:22px 0}
 .ct-bar{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   background:var(--panel-2);border:1px solid #141A19;border-bottom:0;
   border-radius:2px 2px 0 0;padding:7px 9px 7px 15px;
 }
 .ct-title{
   font-family:var(--f-mono);font-size:10px;letter-spacing:.14em;
-  text-transform:uppercase;color:#818E8A;
+  text-transform:uppercase;color:#818E8A;margin-right:auto;
 }
+.ct-copy{
+  display:flex;align-items:center;gap:6px;flex:0 0 auto;cursor:pointer;
+  font-family:var(--f-display);font-weight:600;text-transform:uppercase;
+  letter-spacing:.11em;font-size:11px;color:var(--silk-2);
+  background:#252D2C;border:1px solid #141A19;border-radius:2px;padding:5px 10px;
+  transition:background .15s ease,color .15s ease,border-color .15s ease;
+}
+.ct-copy:hover{background:#38423F;color:var(--silk)}
+.ct-copy svg{display:block;stroke:currentColor;fill:none;stroke-width:1.5;
+  stroke-linecap:round;stroke-linejoin:round}
+.ct-copy .tick{display:none}
+.ct-copy.done{background:var(--audio);color:#1A1206;border-color:#B8842A}
+.ct-copy.done .tick{display:block}
+.ct-copy.done .clip{display:none}
+.ct-copy.warn{background:var(--gate);color:#fff;border-color:#8E362E}
+.ct-copy:focus-visible{outline:2px solid var(--silk);outline-offset:2px}
+@media (max-width:520px){.ct-copy .txt{display:none}.ct-copy{padding:6px 8px}}
 .ct-sw{border:1px solid #141A19;border-radius:2px;background:#1B2221}
 .ct-sw button{padding:5px 12px;font-size:11px;background:#252D2C}
 .codetabs pre{margin:0;border-radius:0 0 2px 2px}
@@ -5714,6 +5731,80 @@ function initAll() {
      per-block tab: flipping one flips them all, so a reader who
      wants Python gets Python for the rest of the book. */
   const codeGroups = [...document.querySelectorAll('.codetabs')];
+
+  /* A copy button per listing, built here rather than repeated in
+     the markup seven times. It copies whichever language is showing. */
+  const COPY_ICON =
+    '<svg class="clip" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false">' +
+    '<rect x="6.6" y="5.6" width="9.8" height="10.8" rx="1.6"></rect>' +
+    '<path d="M13.4 5.4V3.6A1.6 1.6 0 0 0 11.8 2H4.6A1.6 1.6 0 0 0 3 3.6v7.2A1.6 1.6 0 0 0 4.6 12.4h1.8"></path>' +
+    '</svg>' +
+    '<svg class="tick" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false">' +
+    '<path d="M4 10.4l4 4 8-8.8"></path></svg>';
+
+  codeGroups.forEach(group => {
+    const bar = group.querySelector('.ct-bar');
+    if (!bar || bar.querySelector('.ct-copy')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ct-copy';
+    btn.setAttribute('aria-label', 'Copy this code to the clipboard');
+    btn.innerHTML = COPY_ICON;
+
+    let resetTimer = null;
+    const flash = (cls, text, label) => {
+      clearTimeout(resetTimer);
+      btn.classList.remove('done', 'warn');
+      if (cls) btn.classList.add(cls);
+      btn.querySelector('.txt').textContent = text;
+      btn.setAttribute('aria-label', label);
+      resetTimer = setTimeout(() => {
+        btn.classList.remove('done', 'warn');
+        btn.querySelector('.txt').textContent = 'Copy';
+        btn.setAttribute('aria-label', 'Copy this code to the clipboard');
+      }, 1800);
+    };
+
+    btn.addEventListener('click', async () => {
+      const pre = [...group.querySelectorAll('pre')].find(p => !p.hidden);
+      if (!pre) return;
+      /* textContent, not innerText: for a <pre> it is the exact source,
+         and it does not depend on the element being rendered. */
+      const text = pre.textContent.replace(/\s+$/, '') + '\n';
+
+      /* The async clipboard API needs a secure context and permission,
+         so fall back through execCommand, and finally to selecting the
+         text so the reader can copy it by hand. Never fail silently. */
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          flash('done', 'Copied', 'Code copied to the clipboard');
+          return;
+        }
+      } catch (e) { /* fall through */ }
+
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand && document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) { flash('done', 'Copied', 'Code copied to the clipboard'); return; }
+      } catch (e) { /* fall through */ }
+
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(pre);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      flash('warn', 'Selected', 'Could not reach the clipboard. The code is selected — press Ctrl or Cmd and C.');
+    });
+
+    bar.appendChild(btn);
+  });
   const setLang = lang => {
     codeGroups.forEach(g => {
       g.querySelectorAll('.ct-sw button').forEach(b => {
