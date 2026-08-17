@@ -1,0 +1,82 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+SPDX-License-Identifier: CC-BY-4.0
+
+===============================================================================
+SCOPE
+===============================================================================
+
+This licence applies to the DOCUMENTATION AND PROSE content of Signal Path:
+
+  - The chapter text, headings, captions, tables and callouts
+  - The figures and their captions
+  - The structure and pedagogical arrangement of the material
+  - The README and other written material in this repository
+
+It does NOT apply to the source code. All source code in this repository —
+including the DSP engine, the interface code, and the Rust listings quoted in
+the chapter text — is licensed separately under the Apache License 2.0. See the
+LICENSE file.
+
+Where prose and code appear in the same file (index.html contains both), each
+is governed by its own licence.
+
+===============================================================================
+THE LICENCE
+===============================================================================
+
+This work is licensed under the Creative Commons Attribution 4.0 International
+License. The full legal code is published by Creative Commons and is
+incorporated here by reference:
+
+  Legal code:  https://creativecommons.org/licenses/by/4.0/legalcode
+  Summary:     https://creativecommons.org/licenses/by/4.0/
+
+In brief, and without replacing the legal code above, you are free to:
+
+  SHARE   - copy and redistribute the material in any medium or format
+  ADAPT   - remix, transform, and build upon the material
+            for any purpose, including commercially
+
+Under the following term:
+
+  ATTRIBUTION - You must give appropriate credit, provide a link to the
+                licence, and indicate if changes were made. You may do so in
+                any reasonable manner, but not in any way that suggests the
+                licensor endorses you or your use.
+
+No additional restrictions: you may not apply legal terms or technological
+measures that legally restrict others from doing anything the licence permits.
+
+===============================================================================
+HOW TO ATTRIBUTE
+===============================================================================
+
+A sufficient attribution:
+
+  "Signal Path" by Claude Opus 5 (Anthropic), maintained by Koushtav Chakrabarty.
+  Licensed under CC BY 4.0.
+  https://creativecommons.org/licenses/by/4.0/
+
+If you modified the material, say so. For example:
+
+  Adapted from "Signal Path" by Claude Opus 5 (Anthropic), CC BY 4.0.
+  Chapter 5 has been rewritten and the figures redrawn.
+
+===============================================================================
+NOTE ON AUTHORSHIP AND COPYRIGHT
+===============================================================================
+
+The text of this work was written by Claude Opus 5, an AI model made by
+Anthropic. Whether, and to what extent, AI-generated material attracts
+copyright protection is unsettled in several jurisdictions, including the
+United States and India.
+
+This licence is offered as a clear statement of the maintainer's intent
+regarding reuse. It is not a representation that every part of the work is
+protectable by copyright, and nothing here is intended to assert rights over
+material that is in fact uncopyrightable or in the public domain. If any
+portion of this work is not subject to copyright, that portion is free for you
+to use without reference to this licence.
+
+See NOTICE for a fuller statement, and the References section of the document
+for attribution of the underlying techniques to their originators.

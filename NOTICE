@@ -1,0 +1,97 @@
+Signal Path
+An interactive primer on digital sound synthesis
+===============================================================================
+
+Copyright 2026 Koushtav Chakrabarty
+
+Licensed under the Apache License, Version 2.0 (the "License") for source code;
+you may not use the code in this repository except in compliance with the
+License. You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+Documentation and prose are licensed separately under CC BY 4.0. See
+LICENSE-DOCS.
+
+
+-------------------------------------------------------------------------------
+AUTHORSHIP
+-------------------------------------------------------------------------------
+
+The text, figures, DSP engine and interface of this work were written by
+Claude Opus 5, an AI model made by Anthropic, in August 2026.
+
+Whether AI-generated material attracts copyright is unsettled in several
+jurisdictions. The copyright line above states the maintainer's claim and
+intent; it is not a representation that every part of this work is protectable.
+Any portion that is not subject to copyright is free to use without reference
+to either licence.
+
+
+-------------------------------------------------------------------------------
+THIRD-PARTY ALGORITHMS IMPLEMENTED IN THIS WORK
+-------------------------------------------------------------------------------
+
+The DSP code here was written for this document and is not a copy of any
+existing implementation. Several classes do, however, implement published
+algorithms substantially as their authors formulated them. Mathematical
+methods are not themselves subject to copyright, but the people who worked
+them out are named here, and in full in the References section of the
+document.
+
+  Class `SVF` (state-variable filter)
+      Implements the trapezoidal-integration formulation published by
+      Andrew Simper (Cytomic), "Solving the Continuous SVF Equations Using
+      Trapezoidal Integration and Equivalent Currents", November 2013.
+      The g/k/a1/a2/a3 coefficients and the two-integrator update follow
+      that paper.
+
+  Function `polyBlep`
+      Implements the PolyBLEP correction introduced in Vesa Valimaki and
+      Antti Huovilainen, "Antialiasing Oscillators in Subtractive Synthesis",
+      IEEE Signal Processing Magazine 24(2):116-125, March 2007.
+
+  Class `Biquad`
+      Uses the coefficient formulae from Robert Bristow-Johnson's
+      "Audio EQ Cookbook", originally circulated as Audio-EQ-Cookbook.txt and
+      adapted with permission as a W3C Working Group Note (2021).
+
+  Class `Reverb`
+      Implements the parallel-comb into series-allpass topology described in
+      Manfred R. Schroeder, "Natural Sounding Artificial Reverberation",
+      Journal of the Audio Engineering Society 10(3):219-223, July 1962, with
+      the allpass structure from Schroeder and Logan (1961).
+
+  Class `Ladder`
+      Approximates the transistor ladder filter of Robert A. Moog,
+      US Patent 3,475,623 (filed 1966, issued 1969; long expired), following
+      the digital treatments of Stilson and Smith, and Huovilainen (DAFx-04).
+
+  Function `Osc.white`
+      A 32-bit xorshift generator per George Marsaglia, "Xorshift RNGs",
+      Journal of Statistical Software 8(14):1-6, 2003.
+
+If you believe anything else in this work belongs to someone and is not
+credited, please open an issue.
+
+
+-------------------------------------------------------------------------------
+THIRD-PARTY RESOURCES LOADED AT RUNTIME
+-------------------------------------------------------------------------------
+
+This document loads three typefaces from the Google Fonts CDN. They are not
+redistributed in this repository, so their licences do not attach to this
+distribution. If you vendor the font files into the repository for offline use,
+you must include the SIL Open Font License text alongside them.
+
+  Barlow Condensed  - Jeremy Tribby                       - SIL OFL 1.1
+  Spectral          - Production Type                     - SIL OFL 1.1
+  IBM Plex Mono     - Mike Abbink with Bold Monday, IBM   - SIL OFL 1.1
+
+No other third-party code is bundled. The document has no build step and no
+JavaScript dependencies.
