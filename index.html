@@ -489,7 +489,7 @@ footer p{font-size:.93rem;color:var(--ink-2)}
 <body>
 <button class="railbtn" aria-label="Open contents">☰ Contents</button>
 
-<a class="repo" href="https://github.com/TheIllusionistMirage/signal-path" target="_blank" rel="noopener noreferrer"
+<a class="repo" href="https://github.com/USERNAME/REPO" target="_blank" rel="noopener noreferrer"
    title="Read the source on GitHub" aria-label="Read the source on GitHub, opens in a new tab">
   <svg viewBox="0 0 18 18" width="17" height="17" aria-hidden="true" focusable="false">
     <circle cx="5.5" cy="3.6" r="2"></circle>
@@ -546,7 +546,7 @@ footer p{font-size:.93rem;color:var(--ink-2)}
 
   <div class="module" data-demo="sine">
     <div class="mod-head">
-      <p class="mod-name">A · Pure tone</p>
+      <p class="mod-name">Hero · Pure tone</p>
       <span class="mod-kind">One partial · the smallest sound there is</span>
     </div>
     <div class="mod-body">
@@ -581,68 +581,195 @@ footer p{font-size:.93rem;color:var(--ink-2)}
         <span class="chapter-tag">sampling · nyquist · quantisation · decibels · pitch</span>
       </div>
       <h2>Sound as Numbers</h2>
-      <p class="chapter-lede">Before any synthesis, one conversion: a physical pressure wave becomes
-        a list of numbers. Every limitation you will fight later is already implied by that step.</p>
+      <p class="chapter-lede">Before any synthesis, one conversion: something you can hear becomes a
+        list of numbers. Every limitation you will fight later is already hiding in that step.</p>
     </div>
+
+    <div class="note build">
+      <span class="k">If you have no maths or physics background</span>
+      <p>
+        This chapter is written so you can start from nothing. Every symbol is explained before it is
+        used, there is a table of notation below, and a glossary at the end. Nothing here requires
+        anything beyond multiplying and dividing — the frightening-looking formulas are all shorthand
+        for pictures, and you will be shown the picture first.
+      </p>
+    </div>
+
+    <h3>Start with the wiggle</h3>
+    <p>
+      Sound is air being squashed and stretched. A speaker cone pushes forward, crowding the air in
+      front of it; it pulls back, thinning that air out. Do that fast enough and the ripple reaches
+      your eardrum, which wiggles in the same pattern, and you hear something.
+    </p>
+    <p>
+      Two things about that wiggle matter most:
+    </p>
+    <ul>
+      <li><strong>How fast it wiggles</strong> decides the <em>pitch</em>. Faster is higher.</li>
+      <li><strong>How far it wiggles</strong> decides the <em>loudness</em>. Bigger is louder.</li>
+    </ul>
+    <p>
+      A third thing — the exact <em>shape</em> of the wiggle — decides why a violin and a flute playing
+      the same note still sound like different instruments. That one takes until Chapter 2.
+    </p>
+
+    <h3>The flipbook</h3>
+    <p>
+      A film is not moving. It is a stack of still photographs shown twenty-four times a second, fast
+      enough that your eye stops noticing the gaps. Digital audio works the same way, only far faster:
+      instead of photographs, we take <strong>measurements</strong> of the air pressure, about
+      <strong>48,000 times every second</strong>.
+    </p>
+    <p>
+      One measurement is called a <strong>sample</strong>. That is the whole idea. A sample is not a
+      tiny piece of sound and it has no length — it is one reading, like one frame of the film. String
+      enough of them together and play them back at the same rate, and you have sound.
+    </p>
+
+    <figure>
+      <canvas data-fig="sampling" height="150" aria-label="A smooth wave with sample points marked along it"></canvas>
+      <figcaption><b>Fig 0.1</b> — The grey curve is the real pressure wave, which is smooth and
+        continuous. The orange dots are our measurements — the only thing we actually keep. Playback is
+        the job of drawing a smooth curve back through those dots.</figcaption>
+    </figure>
 
     <h3>What a sample actually is</h3>
     <p>
-      Sound is a travelling variation in air pressure. A microphone converts it to a voltage; a converter
-      measures that voltage at fixed intervals and writes down each measurement. That written-down number
-      is a <strong>sample</strong>. It is not a tiny piece of sound, and it has no duration. It is the value
-      of a continuous function at one instant.
+      Inside a synthesizer there is no microphone and nothing to measure. We invent the numbers
+      directly. That is the entire job: <em>decide what number comes next, 48,000 times a second.</em>
     </p>
     <p>
-      Inside a synthesizer we skip the microphone. There is nothing to measure — we invent the numbers
-      directly. The convention is a 32-bit float nominally in the range <code>[-1.0, 1.0]</code>,
-      where 0 is silence and ±1 is full scale. Floats rather than integers, because intermediate stages
-      of a signal chain routinely exceed full scale and you want them to survive intact and come back
-      rather than wrap around; the conversion to fixed-point integers happens once, at the very end,
-      in the audio driver.
+      By convention each number runs from <code>-1.0</code> to <code>+1.0</code>. Zero means the air is
+      undisturbed — silence. Positive means pushed, negative means pulled. <code>+1.0</code> is as loud
+      as the system can go, which engineers call <strong>full scale</strong>.
+    </p>
+    <p>
+      We keep these as decimals rather than whole numbers. The reason is practical: when you add
+      several sounds together the total can briefly overshoot 1.0, and a decimal simply carries the
+      larger value along until a later stage brings it back down. Whole numbers would wrap around and
+      turn the overshoot into a loud crackle. The conversion to whole numbers happens once, at the very
+      end, inside the sound card.
     </p>
 
-    <h3>The sinusoid</h3>
+    <div class="note">
+      <span class="k">The notation, once, so it stops being scary</span>
+      <p>Every symbol used in this chapter, in plain words:</p>
+      <table style="margin-top:12px">
+        <tr><th>Symbol</th><th>Said aloud</th><th>What it means</th></tr>
+        <tr><td><code>π</code></td><td>"pie"</td><td>A fixed number, about 3.14159. It just <em>is</em> that value, the way 7 is 7.</td></tr>
+        <tr><td><code>2π</code></td><td>"two pie"</td><td>One complete turn around a circle. Maths measures angles this way instead of in degrees; 2π means the same thing as 360°.</td></tr>
+        <tr><td><code>sin(…)</code></td><td>"sine of…"</td><td>A button on a calculator. Give it an angle, it gives back the height of a point on a circle. The next section shows exactly what that means.</td></tr>
+        <tr><td><code>f</code></td><td>"eff"</td><td>Frequency — how many times per second something repeats.</td></tr>
+        <tr><td><code>fs</code></td><td>"eff ess"</td><td>Sample rate — how many measurements we take per second. Usually 48,000.</td></tr>
+        <tr><td><code>Hz</code></td><td>"hertz"</td><td>Just a unit meaning "times per second". 440 Hz is 440 wiggles per second.</td></tr>
+        <tr><td><code>2ⁿ</code></td><td>"two to the n"</td><td>2 multiplied by itself n times. 2³ = 2×2×2 = 8.</td></tr>
+        <tr><td><code>log₁₀(x)</code></td><td>"log of x"</td><td>The reverse question: "10 to what power gives me x?" Since 10×10 = 100, log₁₀(100) = 2.</td></tr>
+        <tr><td><code>≈</code></td><td>"about"</td><td>Approximately equal.</td></tr>
+      </table>
+    </div>
+
+    <h3>Where the sine wave comes from</h3>
     <p>
-      One waveform matters more than all the others, because Chapter 2 will show that every other
-      waveform is built from it:
+      One shape of wiggle matters more than every other, because Chapter 2 will show that all the
+      others are built out of it. It has an intimidating name — the <strong>sine wave</strong> — and a
+      completely ordinary origin.
+    </p>
+    <p>
+      Picture a dot painted on the rim of a bicycle wheel, and spin the wheel at a steady speed. Now
+      ignore everything except <em>how high the dot is</em>. It rises to the top, falls through the
+      middle, drops to the bottom, comes back. Plot that height against time and you have drawn a sine
+      wave. That is all a sine wave is: <strong>going round in circles, viewed from the side</strong>.
+    </p>
+
+    <div class="module" data-demo="circle">
+      <div class="mod-head">
+        <p class="mod-name">A · The circle and the wave</p>
+        <span class="mod-kind">Same motion, two views</span>
+      </div>
+      <div class="mod-body">
+        <canvas class="scope tall" data-scope aria-label="A point rotating on a circle, tracing a wave"></canvas>
+        <div class="ctrls">
+          <span class="knob-cell"><span class="knob" data-p="level" data-label="Amplitude"
+            data-min="0.03" data-max="0.7" data-val="0.4" data-dec="2"></span>
+            <span class="lab">Radius</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob" data-p="freq" data-label="Frequency"
+            data-min="1" data-max="1000" data-curve="log" data-val="220" data-unit="Hz" data-dec="0"></span>
+            <span class="lab">Laps / sec</span><span class="val"></span></span>
+          <span class="knob-cell"><span class="knob cv" data-p="phaseSpread" data-label="Starting angle"
+            data-min="0" data-max="6.28" data-val="0" data-dec="2"></span>
+            <span class="lab">Start angle</span><span class="val"></span></span>
+          <span class="sw-cell"><span class="lab">Transport</span>
+            <button class="btn hot" data-play aria-pressed="false">Play</button></span>
+        </div>
+        <div class="readout" data-readout></div>
+      </div>
+      <div class="mod-note">
+        Turn <b>Radius</b> up: the circle grows and so does the wave. That is <b>amplitude</b>, and it
+        is loudness. Turn <b>Laps / sec</b> up: the tone rises. That is <b>frequency</b>, and it is
+        pitch. Turn <b>Start angle</b>: the wave slides sideways without changing shape. That is
+        <b>phase</b> — and on its own you cannot hear it at all, which is why it is the parameter
+        people forget. It matters enormously once two sounds are added together.
+      </div>
+    </div>
+
+    <p>
+      Now the formula, which says nothing the picture did not:
     </p>
     <div class="eq"><span class="lbl">the only equation you must memorise</span>
       x(t) = A · sin(2π f t + φ)</div>
     <p>
-      <strong>A</strong> is amplitude and sets loudness. <strong>f</strong> is frequency in cycles per
-      second and sets pitch. <strong>φ</strong> is the starting phase in radians. Change φ on a lone
-      sine and you hear nothing at all — but φ is the difference between two oscillators reinforcing and
-      cancelling, so it is quietly responsible for most of what makes a synthesizer sound thick.
-      The module at the top of the page is exactly this equation, evaluated 48,000 times a second.
+      Read it left to right, one piece at a time:
+    </p>
+    <table>
+      <tr><th>Piece</th><th>In the picture</th><th>What you hear</th></tr>
+      <tr><td><code>x(t)</code></td><td>The height of the dot at time <code>t</code></td><td>The sample value we store</td></tr>
+      <tr><td><code>A</code></td><td>The radius of the circle</td><td>Loudness</td></tr>
+      <tr><td><code>f</code></td><td>Laps per second</td><td>Pitch</td></tr>
+      <tr><td><code>t</code></td><td>How long we have been spinning</td><td>—</td></tr>
+      <tr><td><code>2π f t</code></td><td>The angle turned through so far</td><td>—</td></tr>
+      <tr><td><code>φ</code> ("phi")</td><td>Where the dot started</td><td>Nothing, alone</td></tr>
+    </table>
+    <p>
+      So <code>2π f t</code> is just "one full turn, multiplied by how many turns we have done". Multiply
+      the sine's answer by <code>A</code> to set the size, and you have your number. The module at the
+      top of the page computes exactly this, 48,000 times a second.
     </p>
 
-    <h3>Sampling and the one hard limit</h3>
+    <h3>How many measurements is enough?</h3>
     <p>
-      We take samples at a fixed <strong>sample rate</strong> <code>fs</code>, typically 44,100 or
-      48,000 per second. Between samples we know nothing. The Nyquist–Shannon theorem says how much
-      that costs: a signal can be reconstructed perfectly from its samples if and only if it contains
-      no energy at or above <code>fs/2</code>, a frequency called <strong>Nyquist</strong>.
+      Back to the flipbook. If you photograph a spinning wheel too rarely, something strange happens —
+      you have seen it in films, where wagon wheels appear to spin backwards. The camera catches the
+      wheel a fraction before it completes each turn, so spoke by spoke it seems to creep the wrong
+      way. Nothing is wrong with the wheel or the camera. There simply is not enough information in the
+      photographs to tell the true motion from a slower, backwards one.
+    </p>
+    <p>
+      Audio has exactly this problem, and there is a precise answer to it. You need
+      <strong>more than two measurements per wiggle</strong>. Two is the bare minimum to catch a peak
+      and a trough; fewer and the wiggle can masquerade as a slower one. Since we take 48,000
+      measurements per second, the fastest wiggle we can capture is just under 24,000 per second.
+    </p>
+    <div class="eq"><span class="lbl">the sampling limit</span>
+      highest recordable frequency = fs / 2</div>
+    <p>
+      Half the sample rate is called the <strong>Nyquist frequency</strong>, after Harry Nyquist, and
+      the rule is the Nyquist–Shannon sampling theorem. It is not a quality-of-equipment problem that
+      better hardware will fix. It is arithmetic. Conveniently, human hearing tops out around 20,000 Hz
+      anyway, which is why 44,100 and 48,000 were chosen.
+    </p>
+    <p>
+      Now the important part. If something faster than Nyquist does sneak in, it does not get quietly
+      dropped and it does not sound like distortion. It comes out as a <em>different, lower note</em>
+      — the wagon wheel, spinning backwards. A 30,000 Hz tone recorded at 48,000 Hz emerges as
+      48,000 − 30,000 = 18,000 Hz, and nothing downstream can tell it from a tone that was genuinely
+      there. This is called <strong>aliasing</strong>, and it is the main antagonist of Chapter 3.
     </p>
 
     <figure>
-      <canvas data-fig="sampling" height="150" aria-label="A continuous wave with sample points marked"></canvas>
-      <figcaption><b>Fig 0.1</b> — The wave is continuous. The dots are everything we keep. Reconstruction
-        is the process of drawing the only band-limited curve that passes through all of them.</figcaption>
-    </figure>
-
-    <p>
-      Feed in something above Nyquist and it does not disappear and it does not distort gracefully.
-      It <strong>folds</strong>: it comes out as a different, lower frequency, with no way to tell it
-      apart from a tone that was genuinely there. A 30 kHz tone sampled at 48 kHz emerges as
-      48000 − 30000 = 18 kHz. This is <strong>aliasing</strong>, and it is the central antagonist of
-      Chapter 3.
-    </p>
-
-    <figure>
-      <canvas data-fig="fold" height="230" aria-label="Graph of perceived frequency against true frequency showing folding"></canvas>
-      <figcaption><b>Fig 0.2</b> — Frequency you get, against frequency you asked for. The line reflects
-        off Nyquist and off the sample rate, over and over. Content above Nyquist does not just vanish —
-        it is mapped somewhere else and mixed into your signal.</figcaption>
+      <canvas data-fig="fold" height="230" aria-label="Graph of the frequency you hear against the frequency you asked for"></canvas>
+      <figcaption><b>Fig 0.2</b> — Along the bottom, the frequency you asked for. Up the side, the
+        frequency you actually get. They agree until Nyquist, and then the line turns around and comes
+        back down — it "folds". Ask for something too fast and you get something too slow.</figcaption>
     </figure>
 
     <div class="module" data-demo="aliasvis">
@@ -663,64 +790,126 @@ footer p{font-size:.93rem;color:var(--ink-2)}
         <div class="readout" data-readout></div>
       </div>
       <div class="mod-note">
-        Raise <b>Signal</b> past half of <b>Rate</b>. The grey curve keeps climbing; the red one —
-        the only thing those amber dots can possibly describe — turns around and comes back down.
-        The samples are not wrong. They are simply consistent with two different signals, and the
-        converter always picks the lower one.
+        Raise <b>Signal</b> until it passes half of <b>Rate</b>. The grey curve keeps getting faster;
+        the red one — the only wiggle those orange dots can possibly describe — turns around and slows
+        down. The dots are not wrong. They are simply consistent with two different signals, and
+        playback always picks the slower one.
       </div>
     </div>
 
-    <h3>Bit depth and the noise floor</h3>
+    <h3>How finely do we measure?</h3>
     <p>
-      Sample rate quantises time. Bit depth quantises amplitude. With <em>b</em> bits you have 2<sup>b</sup>
-      possible values, and the rounding error behaves like a small amount of added noise. The rule of
-      thumb is about <strong>6 dB of dynamic range per bit</strong>: 16-bit audio gives roughly 96 dB,
-      24-bit roughly 144 dB.
+      Sample rate is how <em>often</em> we measure. There is a second question: how <em>precisely</em>.
+    </p>
+    <p>
+      Think of measuring people's heights with a ruler marked only in whole centimetres. Everyone gets
+      rounded to the nearest mark, so every measurement carries a small error. Use a ruler marked in
+      millimetres and the errors shrink. <strong>Bit depth</strong> is how many marks our ruler has.
+      With <em>b</em> bits there are 2<sup><em>b</em></sup> marks — 16 bits gives 65,536 of them.
+    </p>
+    <p>
+      Those rounding errors do not disappear; they add a faint hiss underneath the music, called the
+      noise floor. Each extra bit halves the error, which works out to roughly
+      <strong>6 dB of extra range per bit</strong> — a unit explained in the next section. 16 bits gives
+      about 96 dB of range, which is why CDs sound clean.
     </p>
     <figure>
-      <canvas data-fig="quant" height="150" aria-label="A sine wave quantised to 3 bits"></canvas>
-      <figcaption><b>Fig 0.3</b> — Three bits, exaggerated for visibility. The error is not random —
-        it correlates with the signal, which is why it sounds like distortion rather than hiss.
-        Adding a tiny amount of noise before rounding (dither) decorrelates it and trades harshness
-        for a slightly higher, benign noise floor.</figcaption>
+      <canvas data-fig="quant" height="150" aria-label="A smooth wave forced onto eight levels, producing a staircase"></canvas>
+      <figcaption><b>Fig 0.3</b> — A ruler with only eight marks, exaggerated so you can see it. Notice
+        the result is a staircase, not a curve. The error follows the signal rather than being random,
+        which is why it sounds like grit rather than hiss. Adding a whisper of noise before rounding —
+        called dither — breaks that pattern, trading grit for a slightly louder but far more pleasant
+        hiss.</figcaption>
     </figure>
     <p>
-      Working in <code>f32</code> internally means about 24 bits of mantissa and an enormous exponent
-      range, so quantisation stops being something you think about until output. Which is the point.
+      Because we work in decimals inside the synth rather than whole numbers, this stops being
+      something you think about until the very end. Which is exactly why we do it that way.
     </p>
 
-    <h3>Decibels</h3>
+    <h3>Loudness, and why decibels exist</h3>
     <p>
-      Perceived loudness is roughly logarithmic, so amplitudes are quoted in decibels relative to full scale:
+      Here is something odd about hearing. Going from an amplitude of 0.1 to 0.2 feels like the same
+      size of jump as going from 0.2 to 0.4 — even though the first added 0.1 and the second added 0.2.
+      Your ears respond to <strong>ratios</strong>, not differences. Equal multiplications feel like
+      equal steps.
     </p>
-    <div class="eq"><span class="lbl">amplitude ratio to decibels</span>
-      dB = 20 · log₁₀(A)  ⟺  A = 10^(dB/20)</div>
     <p>
-      Halving amplitude is −6 dB. A ten-fold reduction is −20 dB. Two identical signals summed give
-      +6 dB; two <em>uncorrelated</em> signals of equal level give about +3 dB. That difference explains
-      why stacking eight detuned oscillators is not eight times as loud, and why you must budget headroom
-      when a polyphonic synth sums voices.
+      So it is unhelpful to describe loudness by adding and subtracting. We want a scale where
+      "multiply by 2" is always the same distance, no matter where you start. That scale is the
+      <strong>decibel</strong>, and the maths that produces it is the logarithm:
+    </p>
+    <div class="eq"><span class="lbl">amplitude to decibels</span>
+      dB = 20 · log₁₀(A)</div>
+    <p>
+      You will rarely compute this by hand. What you need is the feel of it:
+    </p>
+    <table>
+      <tr><th>Multiply amplitude by…</th><th>…and you have changed it by</th><th>Sounds like</th></tr>
+      <tr><td>2</td><td>+6 dB</td><td>Clearly louder</td></tr>
+      <tr><td>1</td><td>0 dB</td><td>No change</td></tr>
+      <tr><td>0.5</td><td>−6 dB</td><td>Clearly quieter</td></tr>
+      <tr><td>0.1</td><td>−20 dB</td><td>Much quieter, still easily heard</td></tr>
+      <tr><td>0.001</td><td>−60 dB</td><td>Nearly silent</td></tr>
+    </table>
+    <p>
+      Note that the steps <em>add up</em>: −6 dB twice is −12 dB, which is a quarter of the amplitude.
+      That is the whole convenience of the scale.
+    </p>
+    <p>
+      One consequence to file away for Chapter 7. Two copies of the <em>same</em> signal added together
+      give exactly double the amplitude, so +6 dB. But two <em>different</em> signals of the same level
+      — two different notes, say — only give about +3 dB, because their peaks do not line up. This is
+      why eight voices playing at once are not eight times as loud, and why you must leave headroom
+      when a polyphonic synth adds voices together.
     </p>
 
-    <h3>Pitch</h3>
+    <h3>Pitch, and why the keyboard is not evenly spaced</h3>
     <p>
-      Pitch is logarithmic too. An octave is a doubling of frequency, and twelve-tone equal temperament
-      divides it into twelve equal ratios of 2<sup>1/12</sup> ≈ 1.05946. Anchored at MIDI note 69 = A440:
+      Pitch works on ratios too. Play a note, then play one at exactly double the frequency, and it
+      sounds like "the same note, higher" — that is an <strong>octave</strong>.
     </p>
-    <div class="eq"><span class="lbl">MIDI note number to frequency</span>
+    <table>
+      <tr><th>Note</th><th>Frequency</th><th>Relationship</th></tr>
+      <tr><td>A1</td><td>55 Hz</td><td>—</td></tr>
+      <tr><td>A2</td><td>110 Hz</td><td>double A1</td></tr>
+      <tr><td>A3</td><td>220 Hz</td><td>double A2</td></tr>
+      <tr><td>A4</td><td>440 Hz</td><td>double A3 — the standard tuning reference</td></tr>
+      <tr><td>A5</td><td>880 Hz</td><td>double A4</td></tr>
+    </table>
+    <p>
+      Notice the gaps get bigger as you go up: A1 to A2 spans 55 Hz, but A4 to A5 spans 440 Hz. Same
+      musical distance, wildly different distance in hertz. Western music splits each octave into
+      twelve steps called semitones, and to make every step feel equal, each one must
+      <em>multiply</em> by the same amount. Twelve equal multiplications must reach 2, so each semitone
+      multiplies by 2<sup>1/12</sup> ≈ 1.0595.
+    </p>
+    <p>
+      Which gives the formula that converts a piano key number into a frequency. Middle A is key 69:
+    </p>
+    <div class="eq"><span class="lbl">key number to frequency</span>
       f(n) = 440 · 2^((n − 69) / 12)</div>
     <p>
-      One consequence worth internalising early: <em>everything</em> pitch-related should be done in
-      the exponent. Detune is measured in cents (hundredths of a semitone, a factor of
-      2<sup>1/1200</sup>). Filter cutoff modulation is measured in octaves, not hertz. Vibrato depth is a
-      ratio, not an offset. Get this right at the start and every modulation you add later behaves the
-      same way across the keyboard.
+      In words: start at 440 Hz, and for every key above 69, multiply by the semitone ratio once more.
     </p>
+    <div class="note">
+      <span class="k">The one habit to build now</span>
+      <p>
+        Anything to do with pitch should be expressed as a <em>multiplication</em>, never an addition.
+        Detune is measured in <strong>cents</strong> — hundredths of a semitone — not in hertz. Filter
+        brightness is adjusted in <strong>octaves</strong>, not hertz. Vibrato depth is a ratio.
+      </p>
+      <p>
+        The reason is simple: "add 20 Hz" is a huge wobble on a bass note and inaudible on a high one,
+        whereas "raise by 20 cents" sounds identical everywhere on the keyboard. Get this right at the
+        start and every effect you build later will behave consistently across the whole range.
+      </p>
+    </div>
 
     <p class="pre-label">Rust · the whole of Chapter 0</p>
     <pre><code><span class="c">// Cargo.toml: hound = "3"</span>
-<span class="k">const</span> FS: f32 = 48_000.0;
+<span class="k">const</span> FS: f32 = 48_000.0;      <span class="c">// measurements per second</span>
 
+<span class="c">// piano key number -> frequency, the formula from above</span>
 <span class="k">fn</span> <span class="f">midi_to_freq</span>(n: f32) -> f32 { 440.0 * <span class="f">f32::powf</span>(2.0, (n - 69.0) / 12.0) }
 
 <span class="k">fn</span> <span class="f">main</span>() -> <span class="f">Result</span>&lt;(), <span class="f">Box</span>&lt;<span class="k">dyn</span> std::error::Error&gt;&gt; {
@@ -730,32 +919,57 @@ footer p{font-size:.93rem;color:var(--ink-2)}
     };
     <span class="k">let</span> <span class="k">mut</span> w = hound::WavWriter::create(<span class="s">"tone.wav"</span>, spec)?;
 
-    <span class="k">let</span> freq = <span class="f">midi_to_freq</span>(69.0);      <span class="c">// A440</span>
-    <span class="k">let</span> <span class="k">mut</span> phase: f32 = 0.0;        <span class="c">// normalised, [0,1)</span>
-    <span class="k">let</span> inc = freq / FS;             <span class="c">// phase advance per sample</span>
+    <span class="k">let</span> freq = <span class="f">midi_to_freq</span>(69.0);      <span class="c">// A4, 440 Hz</span>
+    <span class="k">let</span> <span class="k">mut</span> phase: f32 = 0.0;        <span class="c">// how far round the circle we are, 0 to 1</span>
+    <span class="k">let</span> inc = freq / FS;             <span class="c">// fraction of a lap per measurement</span>
 
-    <span class="k">for</span> _ <span class="k">in</span> 0..(FS <span class="k">as</span> usize * 2) {
+    <span class="k">for</span> _ <span class="k">in</span> 0..(FS <span class="k">as</span> usize * 2) {   <span class="c">// two seconds' worth</span>
+        <span class="c">// TAU is one full turn. phase 0..1 becomes an angle 0..one turn.</span>
         <span class="k">let</span> y = (std::f32::consts::TAU * phase).<span class="f">sin</span>() * 0.3;
         w.<span class="f">write_sample</span>(y)?;
         phase += inc;
-        <span class="k">if</span> phase >= 1.0 { phase -= 1.0; }
+        <span class="k">if</span> phase >= 1.0 { phase -= 1.0; }   <span class="c">// completed a lap: start the next</span>
     }
     w.<span class="f">finalize</span>()?;
     <span class="f">Ok</span>(())
 }</code></pre>
 
     <div class="note">
-      <span class="k">Why the phase variable</span>
-      <p>It would be simpler to write <code>sin(TAU * freq * t)</code> with a growing <code>t</code>.
-      Do not. After a few minutes <code>t</code> is large enough that <code>f32</code> can no longer
-      resolve one sample step, and the tone develops a rasp. Worse, changing <code>freq</code> makes
-      the argument jump, which is an audible click. Chapter 1 makes that click on purpose.</p>
+      <span class="k">Why keep a running "phase" instead of using the clock?</span>
+      <p>It looks simpler to write <code>sin(TAU * freq * t)</code> with <code>t</code> counting
+      seconds. Do not. After a few minutes <code>t</code> has grown so large that the computer can no
+      longer tell one measurement from the next, and the tone develops a rasp. Worse, changing
+      <code>freq</code> makes the angle jump, which you hear as a click. Counting laps as we go avoids
+      both. Chapter 1 lets you make that click deliberately, so you know what it sounds like.</p>
     </div>
+
+    <h3>Words from this chapter</h3>
+    <table>
+      <tr><th>Word</th><th>Meaning</th></tr>
+      <tr><td>Sample</td><td>One measurement of the sound. One frame of the flipbook.</td></tr>
+      <tr><td>Sample rate (<code>fs</code>)</td><td>How many samples per second. Usually 48,000.</td></tr>
+      <tr><td>Nyquist</td><td>Half the sample rate. The fastest wiggle that can be captured.</td></tr>
+      <tr><td>Aliasing</td><td>A too-fast wiggle coming out as a wrong, slower one. The wagon wheel.</td></tr>
+      <tr><td>Amplitude</td><td>How big the wiggle is. The radius of the circle. Loudness.</td></tr>
+      <tr><td>Frequency</td><td>How fast it wiggles, in Hz. Laps per second. Pitch.</td></tr>
+      <tr><td>Phase</td><td>Where in the cycle you are. The dot's starting angle.</td></tr>
+      <tr><td>Full scale</td><td>An amplitude of 1.0 — the loudest the system can represent.</td></tr>
+      <tr><td>Bit depth</td><td>How finely each measurement is recorded. The ruler's marks.</td></tr>
+      <tr><td>Decibel (dB)</td><td>A loudness scale where multiplying becomes adding.</td></tr>
+      <tr><td>Cent</td><td>One hundredth of a semitone. The unit for small tuning changes.</td></tr>
+      <tr><td>Sine wave</td><td>The wiggle you get from going round a circle at a steady speed.</td></tr>
+    </table>
 
     <div class="checkpoint">
       <span class="k">Checkpoint 00</span>
-      <p>You can explain why a 25 kHz tone rendered at 44.1 kHz comes out at 19.1 kHz, and why raising
-      a filter's cutoff by "500 Hz" is a badly posed instruction.</p>
+      <p>
+        <strong>If you are new to this:</strong> you can explain why films show wagon wheels spinning
+        backwards, and why that is the same problem as recording a very high note badly.
+      </p>
+      <p style="margin-top:10px">
+        <strong>Going further:</strong> you can say why a 25,000 Hz tone recorded at 44,100 Hz comes out
+        at 19,100 Hz, and why "raise the filter by 500 Hz" is a badly posed instruction.
+      </p>
     </div>
   </div>
 </section>
@@ -4281,6 +4495,111 @@ function noteName(m) {
   const cents = Math.round((m - r) * 100);
   return N[((r % 12) + 12) % 12] + (Math.floor(r / 12) - 1) + (cents ? (cents > 0 ? ' +' : ' ') + cents + 'c' : '');
 }
+
+/* ---------- CH0 · where the sine comes from ------------------
+   A point going round a circle at a steady rate. Plot its height
+   against time and you have drawn a sine wave. Radius is
+   amplitude, laps per second is frequency, starting angle is
+   phase. The equation in the text is a description of this
+   picture and nothing more.
+   ------------------------------------------------------------ */
+DEMOS.circle = root => {
+  const rig = new Rig('tone');
+  rig.setShape('sine');
+  const cv = root.querySelector('[data-scope]');
+  const out = root.querySelector('[data-readout]');
+  const p = {};
+  Object.assign(p, bindRig(root, rig, (k, v) => { p[k] = v; info(); }));
+  rig.set('on', 1);
+
+  const reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const N = 300;
+  const hist = new Float32Array(N);
+  let turn = 0, last = performance.now();
+
+  /* A real audio frequency is far too fast to watch, so the
+     picture runs slowly and says by how much. The tone you hear
+     is always the real one. */
+  const DISPLAY_HZ = 0.55;
+  const slowdown = () => Math.max(1, (p.freq || 220) / DISPLAY_HZ);
+
+  const info = () => {
+    const f = p.freq || 220, sd = slowdown();
+    const deg = ((p.phaseSpread || 0) * 180 / Math.PI).toFixed(0);
+    out.innerHTML =
+      `radius = amplitude = <b>${(p.level || 0).toFixed(2)}</b>   ` +
+      `laps per second = frequency = <b>${f.toFixed(1)} Hz</b>   ` +
+      `starting angle = phase = <b>${deg}°</b>\n` +
+      (f >= 20
+        ? `<i>The tone you hear really is ${f.toFixed(0)} laps every second. The picture is slowed ` +
+          `${sd < 1000 ? sd.toFixed(0) : (sd / 1000).toFixed(1) + ' thousand'}× so you can follow it.</i>`
+        : `<i>Below about 20 laps per second the ear stops hearing a pitch and starts hearing ` +
+          `separate pulses. Turn the frequency up past 20 and it becomes a note.</i>`);
+  };
+
+  const draw = () => {
+    const r = root.getBoundingClientRect();
+    if (r.bottom < -100 || r.top > innerHeight + 100) { last = performance.now(); return; }
+    const now = performance.now();
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    if (!reduced) turn = (turn + DISPLAY_HZ * dt) % 1;
+
+    const { g, w, h } = fitCanvas(cv);
+    const t = theme(true);
+    g.fillStyle = t.bg; g.fillRect(0, 0, w, h);
+
+    const R = Math.min(h * 0.34, 62);
+    const cx = R + 26, cyy = h / 2;
+    const waveX = cx + R + 34;
+    const waveW = Math.max(40, w - waveX - 10);
+    const amp = (p.level || 0.28) / 0.7;      /* knob max is 0.7 */
+
+    const ang = turn * D.TAU + (p.phaseSpread || 0);
+    const py = Math.sin(ang), px = Math.cos(ang);
+
+    /* history: newest first */
+    hist.copyWithin(1, 0, N - 1);
+    hist[0] = py;
+
+    /* --- the circle --- */
+    g.strokeStyle = '#33403D'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(cx - R - 8, cyy); g.lineTo(waveX + waveW, cyy); g.stroke();
+    g.strokeStyle = CV_C; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(cx, cyy, R * amp, 0, D.TAU); g.stroke();
+
+    const ptx = cx + px * R * amp, pty = cyy - py * R * amp;
+    /* radius arm */
+    g.strokeStyle = '#5FA0AE'; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(cx, cyy); g.lineTo(ptx, pty); g.stroke();
+    /* height of the point — this is the number we keep */
+    g.strokeStyle = AUDIO_C; g.lineWidth = 1.4; g.setLineDash([3, 3]);
+    g.beginPath(); g.moveTo(ptx, pty); g.lineTo(waveX, pty); g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = AUDIO_C;
+    g.beginPath(); g.arc(ptx, pty, 4.5, 0, D.TAU); g.fill();
+    g.fillStyle = '#2A3230';
+    g.beginPath(); g.arc(cx, cyy, 2.5, 0, D.TAU); g.fill();
+
+    /* --- the wave it traces --- */
+    g.strokeStyle = AUDIO_C; g.lineWidth = 2;
+    g.beginPath();
+    for (let i = 0; i < N; i++) {
+      const x = waveX + i / (N - 1) * waveW;
+      const y = cyy - hist[i] * R * amp;
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.stroke();
+
+    label(g, 8, 8, 'a point going round…', CV_C);
+    label(g, waveX, h - 16, '…is a wave, drawn out in time →', '#7C8A86');
+    if (reduced) label(g, w - 8, 8, 'motion reduced', '#66716D', 9.5, 'right');
+  };
+
+  drawQueue.add(draw);
+  info();
+  transport(root, rig);
+};
 
 /* ---------- CH0 · sampling and folding ---------------------- */
 DEMOS.aliasvis = root => {
